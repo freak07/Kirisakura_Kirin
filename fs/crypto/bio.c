@@ -38,10 +38,14 @@ static void __fscrypt_decrypt_bio(struct bio *bio, bool done)
 		} else {
 			int ret = fscrypt_decrypt_page(page->mapping->host,
 				page, PAGE_SIZE, 0, page->index);
-			if (ret) {
-				WARN_ON_ONCE(1);
+		int ret = fscrypt_decrypt_page(page->mapping->host, page,
+				PAGE_SIZE, 0, page->index);
+
+		if (ret)
+			SetPageError(page);
+		else if (done)
 				SetPageError(page);
-			} else if (done) {
+		else if (done)
 				SetPageUptodate(page);
 			}
 		}
