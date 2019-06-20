@@ -799,7 +799,7 @@ struct page *f2fs_get_read_data_page(struct inode *inode, pgoff_t index,
 		dn.data_blkaddr = ei.blk + index - ei.fofs;
 		if (!f2fs_is_valid_blkaddr(F2FS_I_SB(inode), dn.data_blkaddr,
 						DATA_GENERIC_ENHANCE_READ)) {
-			err = -EFAULT;
+			err = -EFSCORRUPTED;
 			goto put_err;
 		}
 		goto got_it;
@@ -819,7 +819,7 @@ struct page *f2fs_get_read_data_page(struct inode *inode, pgoff_t index,
 			!f2fs_is_valid_blkaddr(F2FS_I_SB(inode),
 						dn.data_blkaddr,
 						DATA_GENERIC_ENHANCE)) {
-		err = -EFAULT;
+		err = -EFSCORRUPTED;
 		goto put_err;
 	}
 got_it:
@@ -1638,7 +1638,7 @@ got_it:
 
 		if (!f2fs_is_valid_blkaddr(F2FS_I_SB(inode), block_nr,
 						DATA_GENERIC_ENHANCE_READ)) {
-			ret = -EFAULT;
+			ret = -EFSCORRUPTED;
 			goto out;
 		}
 	} else {
@@ -2627,7 +2627,7 @@ repeat:
 	} else {
 		if (!f2fs_is_valid_blkaddr(sbi, blkaddr,
 				DATA_GENERIC_ENHANCE_READ)) {
-			err = -EFAULT;
+			err = -EFSCORRUPTED;
 			goto fail;
 		}
 		err = f2fs_submit_page_read(inode, page, blkaddr);
