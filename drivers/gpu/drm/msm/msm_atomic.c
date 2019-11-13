@@ -27,6 +27,13 @@
 
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
+extern int asus_lcd_bridge_enable;
+extern bool asus_igc_need_commit;  //depends on #if ASUS_KERNEL_IGC_TABLE
+extern int display_early_init;
+extern bool display_on_trig_by_early;
+
+int asus_lcd_crtc_id = -1;
+
 struct msm_commit {
 	struct drm_device *dev;
 	struct drm_atomic_state *state;
@@ -263,6 +270,13 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 * Each encoder has at most one connector (since we always steal
 		 * it away), so we won't call disable hooks twice.
 		 */
+		printk("[Display] msm_disable_outputs: calling drm_bridge_disable\n");
+		if (connector->state->crtc) {
+			if (connector->state->crtc->index == asus_lcd_crtc_id) {
+				asus_lcd_bridge_enable = 0;
+				asus_igc_need_commit = true;
+			}
+		}
 		drm_bridge_disable(encoder->bridge);
 
 		/* Right function depends upon target state. */
@@ -502,8 +516,24 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		 * Each encoder has at most one connector (since we always steal
 		 * it away), so we won't call enable hooks twice.
 		 */
-		drm_bridge_pre_enable(encoder->bridge);
-		++bridge_enable_count;
+		if (asus_lcd_crtc_id == -1) {
+			asus_lcd_crtc_id = connector->state->crtc->index;
+		}
+
+		if (connector->state->crtc) {
+			if (connector->state->crtc->index == asus_lcd_crtc_id) {
+				asus_lcd_bridge_enable = 1;
+
+				/* reset early on flag because this is real call */
+				display_on_trig_by_early = false;
+			}
+		}
+
+		if (display_early_init == 0) {
+			printk ("[Display] init from regular resume() \n");
+			drm_bridge_pre_enable(encoder->bridge);
+			++bridge_enable_count;
+		}
 
 		if (funcs->enable)
 			funcs->enable(encoder);
@@ -545,7 +575,8 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		DRM_DEBUG_ATOMIC("bridge enable enabling [ENCODER:%d:%s]\n",
 				 encoder->base.id, encoder->name);
 
-		drm_bridge_enable(encoder->bridge);
+		if (display_early_init == 0)
+			drm_bridge_enable(encoder->bridge);
 
 		if (splash || (connector->state->crtc &&
 			connector->state->crtc->state->active_changed)) {

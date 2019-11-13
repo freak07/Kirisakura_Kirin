@@ -985,6 +985,10 @@ static int icnss_driver_event_server_arrive(void *data)
 
 	ret = wlfw_ind_register_send_sync_msg(penv);
 	if (ret < 0) {
+		if (ret == -EALREADY) {
+			ret = 0;
+			goto qmi_registered;
+		}
 		ignore_assert = true;
 		goto err_power_on;
 	}
@@ -1044,6 +1048,7 @@ clear_server:
 	icnss_clear_server(penv);
 fail:
 	ICNSS_ASSERT(ignore_assert);
+qmi_registered:
 	return ret;
 }
 
@@ -2942,6 +2947,15 @@ static void icnss_allow_recursive_recovery(struct device *dev)
 	icnss_pr_info("Recursive recovery allowed for WLAN\n");
 }
 
+static void icnss_disallow_recursive_recovery(struct device *dev)
+{
+	struct icnss_priv *priv = dev_get_drvdata(dev);
+
+	priv->allow_recursive_recovery = false;
+
+	icnss_pr_info("Recursive recovery disallowed for WLAN\n");
+}
+
 static ssize_t icnss_fw_debug_write(struct file *fp,
 				    const char __user *user_buf,
 				    size_t count, loff_t *off)
@@ -2992,6 +3006,9 @@ static ssize_t icnss_fw_debug_write(struct file *fp,
 			break;
 		case 4:
 			icnss_allow_recursive_recovery(&priv->pdev->dev);
+			break;
+		case 5:
+			icnss_disallow_recursive_recovery(&priv->pdev->dev);
 			break;
 		default:
 			return -EINVAL;
@@ -3497,6 +3514,20 @@ static const struct file_operations icnss_regread_fops = {
 	.llseek         = seq_lseek,
 };
 
+
+/* ASUS_BSP+++ for wlan firmware add debug ini */
+static char do_wlan_fw_adddebugini[256];
+module_param_string(do_wlan_fw_adddebugini,do_wlan_fw_adddebugini, sizeof(do_wlan_fw_adddebugini), S_IWUSR | S_IRUGO);
+MODULE_PARM_DESC(do_wlan_fw_adddebugini, "Is the wlan fw debug ini");
+
+char * wcnss_get_fw_adddebugini(void)
+{
+       pr_info("[wcnss]: do_wlan_fw_adddebugini=%s.\n", do_wlan_fw_adddebugini);
+       return do_wlan_fw_adddebugini;
+}
+EXPORT_SYMBOL(wcnss_get_fw_adddebugini);
+/* ASUS_BSP--- for wlan firmware add debug ini  */
+
 #ifdef CONFIG_ICNSS_DEBUG
 static int icnss_debugfs_create(struct icnss_priv *priv)
 {
@@ -3648,6 +3679,8 @@ static int icnss_probe(struct platform_device *pdev)
 	priv->pdev = pdev;
 
 	priv->vreg_info = icnss_vreg_info;
+
+	icnss_allow_recursive_recovery(dev);
 
 	if (of_property_read_bool(pdev->dev.of_node, "qcom,icnss-adc_tm")) {
 		ret = icnss_get_vbatt_info(priv);

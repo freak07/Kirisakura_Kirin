@@ -49,6 +49,7 @@
 #include <linux/cpuset.h>
 #include <linux/vmpressure.h>
 #include <linux/freezer.h>
+#include <linux/memory.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/almk.h>
@@ -111,8 +112,14 @@ static atomic_t shift_adj = ATOMIC_INIT(0);
 static short adj_max_shift = 353;
 module_param_named(adj_max_shift, adj_max_shift, short, 0644);
 
+enum {
+	ADAPTIVE_LMK_DISABLED = 0,
+	ADAPTIVE_LMK_ENABLED,
+	ADAPTIVE_LMK_WAS_ENABLED,
+};
+
 /* User knob to enable/disable adaptive lmk feature */
-static int enable_adaptive_lmk;
+static int enable_adaptive_lmk = ADAPTIVE_LMK_DISABLED;
 module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int, 0644);
 
 /*
@@ -153,7 +160,7 @@ static int adjust_minadj(short *min_score_adj)
 {
 	int ret = VMPRESSURE_NO_ADJUST;
 
-	if (!enable_adaptive_lmk)
+	if (enable_adaptive_lmk != ADAPTIVE_LMK_ENABLED)
 		return 0;
 
 	if (atomic_read(&shift_adj) &&
@@ -176,7 +183,7 @@ static int lmk_vmpressure_notifier(struct notifier_block *nb,
 	unsigned long pressure = action;
 	int array_size = ARRAY_SIZE(lowmem_adj);
 
-	if (!enable_adaptive_lmk)
+	if (enable_adaptive_lmk != ADAPTIVE_LMK_ENABLED)
 		return 0;
 
 	if (pressure >= 95) {
@@ -571,6 +578,10 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		}
 
 		oom_score_adj = p->signal->oom_score_adj;
+		//if a process is occupying too much memory, show them on dmesg.
+		if( ((get_mm_rss(p->mm) * (long)PAGE_SIZE / 1048576) > 1000) ){
+			printk("lowmemorykiller: mem_alert: %6d  %8ldkB %8d %s\n",p->pid, get_mm_rss(p->mm) * (long)(PAGE_SIZE / 1024),oom_score_adj, p->comm);
+		}
 		if (oom_score_adj < min_score_adj) {
 			task_unlock(p);
 			continue;
@@ -646,7 +657,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			(long)(PAGE_SIZE / 1024),
 			sc->gfp_mask);
 
-		if (lowmem_debug_level >= 2 && selected_oom_score_adj == 0) {
+		if (selected_oom_score_adj == 0) {
 			show_mem(SHOW_MEM_FILTER_NODES, NULL);
 			show_mem_call_notifiers();
 			dump_tasks(NULL, NULL);
@@ -678,16 +689,41 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	return rem;
 }
 
+static int lmk_hotplug_callback(struct notifier_block *self,
+				unsigned long action, void *arg)
+{
+	switch (action) {
+	case MEM_GOING_OFFLINE:
+		if (enable_adaptive_lmk == ADAPTIVE_LMK_ENABLED)
+			enable_adaptive_lmk = ADAPTIVE_LMK_WAS_ENABLED;
+		break;
+	case MEM_OFFLINE:
+		if (enable_adaptive_lmk == ADAPTIVE_LMK_WAS_ENABLED)
+			enable_adaptive_lmk = ADAPTIVE_LMK_ENABLED;
+		break;
+	default:
+		break;
+	}
+	return NOTIFY_OK;
+}
+
 static struct shrinker lowmem_shrinker = {
 	.scan_objects = lowmem_scan,
 	.count_objects = lowmem_count,
 	.seeks = DEFAULT_SEEKS * 16
 };
 
+static struct notifier_block lmk_memory_callback_nb = {
+	.notifier_call = lmk_hotplug_callback,
+	.priority = 0,
+};
+
 static int __init lowmem_init(void)
 {
 	register_shrinker(&lowmem_shrinker);
 	vmpressure_notifier_register(&lmk_vmpr_nb);
+	if (register_hotmemory_notifier(&lmk_memory_callback_nb))
+		lowmem_print(1, "Registering memory hotplug notifier failed\n");
 	return 0;
 }
 device_initcall(lowmem_init);

@@ -41,9 +41,14 @@
 #include <asm/virt.h>
 
 #include <linux/syscore_ops.h>
+#include <linux/suspend.h>
+#include <linux/notifier.h>
 
 #include "irq-gic-common.h"
 
+//ASUS_BSP +++
+int gic_irq_cnt,gic_resume_irq;//[Power]Add these values to save IRQ's counts and number
+//ASUS_BSP ---
 struct redist_region {
 	void __iomem		*redist_base;
 	phys_addr_t		phys_base;
@@ -60,6 +65,14 @@ struct gic_chip_data {
 	u32			nr_redist_regions;
 	unsigned int		irq_nr;
 	struct partition_desc	*ppi_descs[16];
+#ifdef CONFIG_HIBERNATION
+	unsigned int enabled_irqs[32];
+	unsigned int active_irqs[32];
+	unsigned int irq_edg_lvl[64];
+	unsigned int ppi_edg_lvl;
+	unsigned int enabled_sgis;
+	unsigned int pending_sgis;
+#endif
 };
 
 static struct gic_chip_data gic_data __read_mostly;
@@ -73,6 +86,9 @@ static struct gic_kvm_info gic_v3_kvm_info;
 
 /* Our default, arbitrary priority value. Linux only uses one anyway. */
 #define DEFAULT_PMR_VALUE	0xf0
+
+static void gic_dist_init(void);
+static void gic_cpu_init(void);
 
 static inline unsigned int gic_irq(struct irq_data *d)
 {
@@ -334,11 +350,82 @@ static int gic_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
 }
 
 #ifdef CONFIG_PM
+#ifdef CONFIG_HIBERNATION
+extern int in_suspend;
+static bool hibernation;
 
+static int gic_suspend_notifier(struct notifier_block *nb,
+				unsigned long event,
+				void *dummy)
+{
+	if (event == PM_HIBERNATION_PREPARE)
+		hibernation = true;
+	else if (event == PM_POST_HIBERNATION)
+		hibernation = false;
+	return NOTIFY_OK;
+}
+
+static struct notifier_block gic_notif_block = {
+	.notifier_call = gic_suspend_notifier,
+};
+
+static void gic_hibernation_suspend(void)
+{
+	int i;
+	void __iomem *base = gic_data.dist_base;
+	void __iomem *rdist_base = gic_data_rdist_sgi_base();
+
+	gic_data.enabled_sgis = readl_relaxed(rdist_base + GICD_ISENABLER);
+	gic_data.pending_sgis = readl_relaxed(rdist_base + GICD_ISPENDR);
+	/* Store edge level for PPIs by reading GICR_ICFGR1 */
+	gic_data.ppi_edg_lvl = readl_relaxed(rdist_base + GICR_ICFGR0 + 4);
+
+	for (i = 0; i * 32 < gic_data.irq_nr; i++) {
+		gic_data.enabled_irqs[i] = readl_relaxed(base +
+						GICD_ISENABLER + i * 4);
+		gic_data.active_irqs[i] = readl_relaxed(base +
+						GICD_ISPENDR + i * 4);
+	}
+
+	for (i = 2; i < gic_data.irq_nr / 16; i++)
+		gic_data.irq_edg_lvl[i] = readl_relaxed(base +
+						GICD_ICFGR + i * 4);
+}
+#endif
 static int gic_suspend(void)
 {
+#ifdef CONFIG_HIBERNATION
+	if (unlikely(hibernation))
+		gic_hibernation_suspend();
+#endif
 	return 0;
 }
+
+/*AS-K Log Modem Wake Up QMI Info+*/
+#define MODEM_IRQ_VALUE 664
+static int modem_resume_irq_flag = 0;
+int modem_resume_irq_flag_function(void) {
+    if( modem_resume_irq_flag == 1 ) {
+        modem_resume_irq_flag = 0;
+        return 1;
+    }
+    return 0;
+}
+EXPORT_SYMBOL(modem_resume_irq_flag_function);
+/*AS-K Log Modem Wake Up QMI Info-*/
+
+/*AS-K Log Wake Up IP Address Info+*/
+#define IPA_IRQ_VALUE 107
+static int ipa_resume_irq_flag = 0;
+int ipa_resume_irq_flag_function(void) {
+    if( ipa_resume_irq_flag == 1 ) {
+        ipa_resume_irq_flag = 0;
+        return 1;
+    }
+    return 0;
+}
+EXPORT_SYMBOL(ipa_resume_irq_flag_function);
+/*AS-K Log Wake Up IP Address Info-*/
 
 static void gic_show_resume_irq(struct gic_chip_data *gic)
 {
@@ -347,6 +434,10 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 	u32 pending[32];
 	void __iomem *base = gic_data.dist_base;
 
+//ASUS_BSP +++ [PM]reset IRQ count and IRQ number every time.
+	gic_resume_irq=0;
+	gic_irq_cnt=0;
+//ASUS_BSP --- [PM]reset IRQ count and IRQ number every time.
 	if (!msm_show_resume_irq_mask)
 		return;
 
@@ -368,8 +459,26 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 		else if (desc->action && desc->action->name)
 			name = desc->action->name;
 
-		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
+		pr_warn("[PM] %s: %d triggered %s\n", __func__, irq, name);
+
+		/*AS-K Log Modem Wake Up QMI Info+*/
+		if(irq == MODEM_IRQ_VALUE) {
+			modem_resume_irq_flag = 1;
+                }
+		/*AS-K Log Modem Wake Up QMI Info-*/
+
+		/*AS-K Log Wake Up IP Address Info+*/
+		if(irq == IPA_IRQ_VALUE) {
+			ipa_resume_irq_flag = 1;
+                }
+		/*AS-K Log Wake Up IP Address Info-*/
+
+//ASUS_BSP +++ [PM]save IRQ's counts and number
+		gic_resume_irq = irq;
+		gic_irq_cnt++;
+//ASUS_BSP --- [PM]save IRQ's counts and number
 	}
+	printk("irq count: %d\n", gic_irq_cnt);
 }
 
 static void gic_resume_one(struct gic_chip_data *gic)
@@ -379,6 +488,48 @@ static void gic_resume_one(struct gic_chip_data *gic)
 
 static void gic_resume(void)
 {
+#ifdef CONFIG_HIBERNATION
+	int i;
+	void __iomem *base = gic_data.dist_base;
+	void __iomem *rdist_base = gic_data_rdist_sgi_base();
+
+	/*
+	 * in_suspend is defined in hibernate.c and will be 0 during
+	 * hibernation restore case. Also it willl be 0 for suspend to ram case
+	 * and similar cases. Underlying code will not get executed in regular
+	 * cases and will be executed only for hibernation restore.
+	 */
+	if (unlikely((in_suspend == 0 && hibernation))) {
+		pr_info("Re-initializing gic in hibernation restore\n");
+		gic_dist_init();
+		gic_cpu_init();
+
+		/* Activate and enable SGIs and PPIs */
+		writel_relaxed(gic_data.enabled_sgis,
+			       rdist_base + GICD_ISENABLER);
+		writel_relaxed(gic_data.pending_sgis,
+			       rdist_base + GICD_ISPENDR);
+		/* Restore edge and level triggers for PPIs from GICR_ICFGR1 */
+		writel_relaxed(gic_data.ppi_edg_lvl,
+			       rdist_base + GICR_ICFGR0 + 4);
+
+		/* Restore edge and level triggers */
+		for (i = 2; i < gic_data.irq_nr / 16; i++)
+			writel_relaxed(gic_data.irq_edg_lvl[i],
+					base + GICD_ICFGR + i * 4);
+		gic_dist_wait_for_rwp();
+
+		/* Activate and enable interupts from backup */
+		for (i = 0; i * 32 < gic_data.irq_nr; i++) {
+			writel_relaxed(gic_data.active_irqs[i],
+				       base + GICD_ISPENDR + i * 4);
+
+			writel_relaxed(gic_data.enabled_irqs[i],
+				       base + GICD_ISENABLER + i * 4);
+		}
+		gic_dist_wait_for_rwp();
+	}
+#endif
 	gic_resume_one(&gic_data);
 }
 
@@ -458,7 +609,7 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 	} while (irqnr != ICC_IAR1_EL1_SPURIOUS);
 }
 
-static void __init gic_dist_init(void)
+static void gic_dist_init(void)
 {
 	unsigned int i;
 	u64 affinity;
@@ -552,7 +703,7 @@ static int __gic_populate_rdist(struct redist_region *region, void __iomem *ptr)
 		gic_data_rdist_rd_base() = ptr;
 		gic_data_rdist()->phys_base = region->phys_base + offset;
 
-		pr_info("CPU%d: found redistributor %lx region %d:%pa\n",
+		pr_debug("CPU%d: found redistributor %lx region %d:%pa\n",
 			smp_processor_id(), mpidr,
 			(int)(region - gic_data.redist_regions),
 			&gic_data_rdist()->phys_base);
@@ -1278,7 +1429,11 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 			     redist_stride, &node->fwnode);
 	if (err)
 		goto out_unmap_rdist;
-
+#ifdef CONFIG_HIBERNATION
+	err = register_pm_notifier(&gic_notif_block);
+	if (err)
+		goto out_unmap_rdist;
+#endif
 	gic_populate_ppi_partitions(node);
 	gic_of_setup_kvm_info(node);
 	return 0;
