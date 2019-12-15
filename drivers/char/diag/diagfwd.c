@@ -634,6 +634,9 @@ int diag_process_stm_cmd(unsigned char *buf, int len, unsigned char *dest_buf)
 		if (mask & DIAG_STM_CDSP)
 			diag_process_stm_mask(cmd, DIAG_STM_CDSP,
 						PERIPHERAL_CDSP);
+		if (mask & DIAG_STM_NPU)
+			diag_process_stm_mask(cmd, DIAG_STM_NPU,
+						PERIPHERAL_NPU);
 
 		if (mask & DIAG_STM_APPS)
 			diag_process_stm_mask(cmd, DIAG_STM_APPS, APPS_DATA);
@@ -658,6 +661,9 @@ int diag_process_stm_cmd(unsigned char *buf, int len, unsigned char *dest_buf)
 	if (driver->feature[PERIPHERAL_CDSP].stm_support)
 		rsp_supported |= DIAG_STM_CDSP;
 
+	if (driver->feature[PERIPHERAL_NPU].stm_support)
+		rsp_supported |= DIAG_STM_NPU;
+
 	rsp_supported |= DIAG_STM_APPS;
 
 	/* Set mask denoting STM state/status for each peripheral/APSS */
@@ -675,6 +681,9 @@ int diag_process_stm_cmd(unsigned char *buf, int len, unsigned char *dest_buf)
 
 	if (driver->stm_state[PERIPHERAL_CDSP])
 		rsp_status |= DIAG_STM_CDSP;
+
+	if (driver->stm_state[PERIPHERAL_NPU])
+		rsp_status |= DIAG_STM_NPU;
 
 	if (driver->stm_state[APPS_DATA])
 		rsp_status |= DIAG_STM_APPS;
@@ -1862,6 +1871,9 @@ static int diagfwd_mux_write_done(unsigned char *buf, int len, int buf_ctxt,
 				DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
 				"No apps data buffer is allocated to be freed\n");
 			if (temp) {
+				DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
+				"Freeing Apps data buffer after write done hdlc.allocated: %d, non_hdlc.allocated: %d\n",
+				hdlc_data.allocated, non_hdlc_data.allocated);
 				diagmem_free(driver, temp->buf, POOL_TYPE_HDLC);
 				temp->buf = NULL;
 				temp->len = 0;

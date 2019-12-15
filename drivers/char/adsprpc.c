@@ -2380,7 +2380,6 @@ static int fastrpc_munmap_on_dsp_rh(struct fastrpc_file *fl, uint64_t phys,
 		struct fastrpc_ioctl_invoke_crc ioctl;
 		struct scm_desc desc = {0};
 		remote_arg_t ra[2];
-		int err = 0;
 		struct {
 			uint8_t skey;
 		} routargs;
@@ -2525,19 +2524,19 @@ static int fastrpc_mmap_remove_pdr(struct fastrpc_file *fl)
 			AUDIO_PDR_SERVICE_LOCATION_CLIENT_NAME, &session));
 	if (err)
 		goto bail;
-	if (me->channel[fl->cid].spd[session].pdrcount !=
-		me->channel[fl->cid].spd[session].prevpdrcount) {
-		if (fastrpc_mmap_remove_ssr(fl))
-			pr_err("ADSPRPC: SSR: Failed to unmap remote heap\n");
-		me->channel[fl->cid].spd[session].prevpdrcount =
-				me->channel[fl->cid].spd[session].pdrcount;
-	}
 	if (!me->channel[fl->cid].spd[session].ispdup) {
 		VERIFY(err, 0);
 		if (err) {
 			err = -ENOTCONN;
 			goto bail;
 		}
+	}
+	if (me->channel[fl->cid].spd[session].pdrcount !=
+		me->channel[fl->cid].spd[session].prevpdrcount) {
+		if (fastrpc_mmap_remove_ssr(fl))
+			pr_err("ADSPRPC: SSR: Failed to unmap remote heap\n");
+		me->channel[fl->cid].spd[session].prevpdrcount =
+				me->channel[fl->cid].spd[session].pdrcount;
 	}
 bail:
 	return err;

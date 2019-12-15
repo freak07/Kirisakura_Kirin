@@ -15,7 +15,7 @@
 &soc {
 	tlmm: pinctrl@03000000 {
 		compatible = "qcom,sm6150-pinctrl";
-		reg = <0x03000000 0xdc2000>, <0x17c000f0 0x60>;
+		reg = <0x03000000 0xdc2000>, <0x17c000f0 0x50>;
 		reg-names = "pinctrl", "spi_cfg";
 		interrupts = <0 208 0>;
 		gpio-controller;
@@ -555,8 +555,8 @@
 				config {
 					pins = "gpio6", "gpio7", "gpio8",
 								"gpio9";
-					drive-strength = <6>;
-					bias-disable;
+					drive-strength = <2>;
+					bias-pull-down;
 				};
 			};
 		};
@@ -1150,7 +1150,7 @@
 			ter_i2s_sck_sleep: ter_i2s_sck_sleep {
 				mux {
 					pins = "gpio115", "gpio116";
-					function = "ter_mi2s";
+					function = "gpio";
 				};
 
 				config {
@@ -1179,7 +1179,7 @@
 			ter_i2s_data0_sleep: ter_i2s_data0_sleep {
 				mux {
 					pins = "gpio117";
-					function = "ter_mi2s";
+					function = "gpio";
 				};
 
 				config {
@@ -1208,7 +1208,7 @@
 			ter_i2s_data1_sleep: ter_i2s_data1_sleep {
 				mux {
 					pins = "gpio118";
-					function = "ter_mi2s";
+					function = "gpio";
 				};
 
 				config {
@@ -1821,7 +1821,7 @@
 					pins = "gpio38";
 					drive-strength = <4>;   /* 4 mA */
 					bias-no-pull;
-					input-enable;
+					output-high;
 				};
 			};
 		};
@@ -1849,7 +1849,7 @@
 					pins = "gpio39";
 					drive-strength = <4>;   /* 4 mA */
 					bias-no-pull;
-					output-high;
+					input-enable;
 				};
 			};
 		};
@@ -1905,7 +1905,7 @@
 					pins = "gpio26";
 					drive-strength = <4>;   /* 4 mA */
 					bias-no-pull;
-					input-enable;
+					output-high;
 				};
 			};
 		};
@@ -1933,7 +1933,7 @@
 					pins = "gpio27";
 					drive-strength = <4>;   /* 4 mA */
 					bias-no-pull;
-					output-high;
+					input-enable;
 				};
 			};
 		};

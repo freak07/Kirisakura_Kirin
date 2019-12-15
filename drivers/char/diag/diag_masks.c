@@ -907,7 +907,8 @@ static int diag_cmd_set_msg_mask(unsigned char *src_buf, int src_len,
 		goto end;
 	if (mask_size + write_len > dest_len)
 		mask_size = dest_len - write_len;
-	memcpy(dest_buf + write_len, src_buf + header_len, mask_size);
+	if (mask_size && src_len >= header_len + mask_size)
+		memcpy(dest_buf + write_len, src_buf + header_len, mask_size);
 	write_len += mask_size;
 	for (i = 0; i < NUM_MD_SESSIONS; i++) {
 		if (i == APPS_DATA)
@@ -1109,7 +1110,7 @@ static int diag_cmd_update_event_mask(unsigned char *src_buf, int src_len,
 	rsp.num_bits = driver->last_event_id + 1;
 	memcpy(dest_buf, &rsp, header_len);
 	write_len += header_len;
-	memcpy(dest_buf + write_len, mask_info->ptr, mask_len);
+	memcpy(dest_buf + write_len, src_buf + header_len, mask_len);
 	write_len += mask_len;
 
 	for (i = 0; i < NUM_MD_SESSIONS; i++) {

@@ -304,6 +304,14 @@
 #define GCC_USB30_SEC_BCR					39
 #define GCC_USB_PHY_CFG_AHB2PHY_BCR			40
 #define GCC_VIDEO_AXIC_CLK_BCR				41
+#define GCC_VIDEO_AXI0_CLK_BCR				42
+#define GCC_VIDEO_AXI1_CLK_BCR				43
 
-#define MMCX_CLK					0
+/* Dummy clocks for rate measurement */
+#define MEASURE_ONLY_SNOC_CLK				0
+#define MEASURE_ONLY_CNOC_CLK				1
+#define MEASURE_ONLY_MCCC_CLK				2
+#define MEASURE_ONLY_IPA_2X_CLK				3
+#define MMCX_CLK					4
+
 #endif

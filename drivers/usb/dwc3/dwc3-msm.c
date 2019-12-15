@@ -323,7 +323,7 @@ struct dwc3_msm {
 	enum usb_device_speed override_usb_speed;
 	u32			*gsi_reg;
 	int			gsi_reg_offset_cnt;
-	bool	gsi_io_coherency_disabled;
+	bool			gsi_io_coherency_disabled;
 
 	struct notifier_block	dpdm_nb;
 	struct regulator	*dpdm_reg;
@@ -1158,15 +1158,15 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 	len = req->buf_len * req->num_bufs;
 	req->buf_base_addr = dma_alloc_attrs(dwc->sysdev, len, &req->dma,
-	GFP_KERNEL, dma_attr);
+					GFP_KERNEL, dma_attr);
 	if (!req->buf_base_addr) {
-	dev_err(dwc->dev, "%s: buf_base_addr allocate failed %s\n",
-	dep->name);
-	return -ENOMEM;
+		dev_err(dwc->dev, "buf_base_addr allocate failed %s\n",
+				dep->name);
+		return -ENOMEM;
 	}
 
 	dma_get_sgtable(dwc->sysdev, &req->sgt_data_buff, req->buf_base_addr,
-	req->dma, len);
+			req->dma, len);
 
 	buffer_addr = req->dma;
 
@@ -1279,7 +1279,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 free_trb_buffer:
 	dma_free_attrs(dwc->sysdev, len, req->buf_base_addr, req->dma,
-	dma_attr);
+			dma_attr);
 	req->buf_base_addr = NULL;
 	sg_free_table(&req->sgt_data_buff);
 	return -ENOMEM;
@@ -1318,7 +1318,7 @@ static void gsi_free_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 
 	/* free TRB buffers */
 	dma_free_attrs(dwc->sysdev, req->buf_len * req->num_bufs,
-	req->buf_base_addr, req->dma, dma_attr);
+		req->buf_base_addr, req->dma, dma_attr);
 	req->buf_base_addr = NULL;
 	sg_free_table(&req->sgt_data_buff);
 }
@@ -1931,8 +1931,13 @@ static void dwc3_msm_notify_event(struct dwc3 *dwc, unsigned int event,
 		reg |= DWC3_GCTL_CORESOFTRESET;
 		dwc3_msm_write_reg(mdwc->base, DWC3_GCTL, reg);
 
-		/* restart USB which performs full reset and reconnect */
-		schedule_work(&mdwc->restart_usb_work);
+		/*
+		 * If core could not recover after MAX_ERROR_RECOVERY_TRIES
+		 * skip the restart USB work and keep the core in softreset
+		 * state
+		 */
+		if (dwc->retries_on_error < MAX_ERROR_RECOVERY_TRIES)
+			schedule_work(&mdwc->restart_usb_work);
 		break;
 	case DWC3_CONTROLLER_RESET_EVENT:
 		dev_dbg(mdwc->dev, "DWC3_CONTROLLER_RESET_EVENT received\n");
@@ -2874,7 +2879,7 @@ static void dwc3_resume_work(struct work_struct *w)
 			dwc->maximum_speed = USB_SPEED_HIGH;
 
 		if (mdwc->override_usb_speed &&
-				mdwc->override_usb_speed < dwc->maximum_speed) {
+			mdwc->override_usb_speed <= dwc->maximum_speed) {
 			dwc->maximum_speed = mdwc->override_usb_speed;
 			dwc->gadget.max_speed = dwc->maximum_speed;
 			dbg_event(0xFF, "override_speed",
@@ -3036,6 +3041,7 @@ static irqreturn_t msm_dwc3_pwr_irq(int irq, void *data)
 }
 
 static void dwc3_otg_sm_work(struct work_struct *w);
+static int get_psy_type(struct dwc3_msm *mdwc);
 
 static int dwc3_msm_get_clk_gdsc(struct dwc3_msm *mdwc)
 {
@@ -3202,6 +3208,8 @@ static void check_for_sdp_connection(struct work_struct *w)
 	}
 }
 
+#define DP_PULSE_WIDTH_MSEC 200
+
 static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	unsigned long event, void *ptr)
 {
@@ -3225,6 +3233,13 @@ static int dwc3_msm_vbus_notifier(struct notifier_block *nb,
 	dev_info(mdwc->dev, "[USB] vbus:%ld event received\n", event);
 
 	mdwc->vbus_active = event;
+
+	if (get_psy_type(mdwc) == POWER_SUPPLY_TYPE_USB_CDP &&
+			mdwc->vbus_active) {
+		dev_dbg(mdwc->dev, "Connected to CDP, pull DP up\n");
+		usb_phy_drive_dp_pulse(mdwc->hs_phy, DP_PULSE_WIDTH_MSEC);
+	}
+
 	if ((dwc->dr_mode == USB_DR_MODE_OTG) && !mdwc->in_restart)
 		queue_work(mdwc->dwc3_wq, &mdwc->resume_work);
 
@@ -3583,12 +3598,13 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	}
 
 	/*
-	 * Create freezable workqueue for sm_work so that it gets scheduled only
-	 * after pm_resume has happened completely. This helps in avoiding race
-	 * conditions between xhci_plat_resume and xhci_runtime_resume; and also
-	 * between hcd disconnect and xhci_resume.
+	 * Create an ordered freezable workqueue for sm_work so that it gets
+	 * scheduled only after pm_resume has happened completely. This helps
+	 * in avoiding race conditions between xhci_plat_resume and
+	 * xhci_runtime_resume and also between hcd disconnect and xhci_resume.
 	 */
-	mdwc->sm_usb_wq = create_freezable_workqueue("k_sm_usb");
+	mdwc->sm_usb_wq = alloc_ordered_workqueue("k_sm_usb",
+						WQ_FREEZABLE | WQ_MEM_RECLAIM);
 	if (!mdwc->sm_usb_wq) {
 		destroy_workqueue(mdwc->dwc3_wq);
 		return -ENOMEM;
@@ -3749,7 +3765,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 				"qcom,use-pdc-interrupts");
 
 	mdwc->gsi_io_coherency_disabled = of_property_read_bool(node,
-	"qcom,gsi-disable-io-coherency");
+				"qcom,gsi-disable-io-coherency");
 
 	dwc3_set_notifier(&dwc3_msm_notify_event);
 

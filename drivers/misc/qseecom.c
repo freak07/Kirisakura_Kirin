@@ -154,13 +154,13 @@ enum qseecom_listener_unregister_kthread_state {
 	LSNR_UNREG_KT_WAKEUP,
 };
 
-static struct class *driver_class;
-static dev_t qseecom_device_no;
-
 enum qseecom_unload_app_kthread_state {
 	UNLOAD_APP_KT_SLEEP = 0,
 	UNLOAD_APP_KT_WAKEUP,
 };
+
+static struct class *driver_class;
+static dev_t qseecom_device_no;
 
 static DEFINE_MUTEX(qsee_bw_mutex);
 static DEFINE_MUTEX(app_access_lock);
@@ -1383,8 +1383,6 @@ static int qseecom_register_listener(struct qseecom_dev_handle *data,
 			rcvd_lstnr.sb_size))
 		return -EFAULT;
 
-	data->listener.id = rcvd_lstnr.listener_id;
-
 	ptr_svc = __qseecom_find_svc(rcvd_lstnr.listener_id);
 	if (ptr_svc) {
 		if (ptr_svc->unregister_pending == false) {
@@ -1432,6 +1430,7 @@ static int qseecom_register_listener(struct qseecom_dev_handle *data,
 	new_entry->listener_in_use = false;
 	list_add_tail(&new_entry->list, &qseecom.registered_listener_list_head);
 
+	data->listener.id = rcvd_lstnr.listener_id;
 	pr_debug("Service %d is registered\n", rcvd_lstnr.listener_id);
 	return ret;
 }
@@ -1495,6 +1494,11 @@ static int qseecom_unregister_listener(struct qseecom_dev_handle *data)
 {
 	struct qseecom_registered_listener_list *ptr_svc = NULL;
 	struct qseecom_unregister_pending_list *entry = NULL;
+
+	if (data->released) {
+		pr_err("Don't unregister lsnr %d\n", data->listener.id);
+		return -EINVAL;
+	}
 
 	ptr_svc = __qseecom_find_svc(data->listener.id);
 	if (!ptr_svc) {
@@ -2956,7 +2960,6 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data,
 		ret = __qseecom_unload_app(data, data->client.app_id);
 
 		/* double check if this app_entry still exists */
-
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags1);
 		list_for_each_entry(ptr_app,
 			&qseecom.registered_app_list_head, list) {
@@ -3008,6 +3011,7 @@ unload_exit:
 	return ret;
 }
 
+
 static int qseecom_prepare_unload_app(struct qseecom_dev_handle *data)
 {
 	struct qseecom_unload_app_pending_list *entry = NULL;
@@ -3021,10 +3025,8 @@ static int qseecom_prepare_unload_app(struct qseecom_dev_handle *data)
 	if (!entry)
 		return -ENOMEM;
 	entry->data = data;
-	mutex_lock(&unload_app_pending_list_lock);
 	list_add_tail(&entry->list,
 		&qseecom.unload_app_pending_list_head);
-	mutex_unlock(&unload_app_pending_list_lock);
 	data->client.unload_pending = true;
 	pr_debug("unload ta %d pending\n", data->client.app_id);
 	return 0;
@@ -3709,6 +3711,33 @@ int __boundary_checks_offset(struct qseecom_send_modfd_cmd_req *req,
 	return 0;
 }
 
+static int __boundary_checks_offset_64(struct qseecom_send_modfd_cmd_req *req,
+			struct qseecom_send_modfd_listener_resp *lstnr_resp,
+			struct qseecom_dev_handle *data, int i)
+{
+
+	if ((data->type != QSEECOM_LISTENER_SERVICE) &&
+						(req->ifd_data[i].fd > 0)) {
+		if ((req->cmd_req_len < sizeof(uint64_t)) ||
+			(req->ifd_data[i].cmd_buf_offset >
+			req->cmd_req_len - sizeof(uint64_t))) {
+			pr_err("Invalid offset (req len) 0x%x\n",
+				req->ifd_data[i].cmd_buf_offset);
+			return -EINVAL;
+		}
+	} else if ((data->type == QSEECOM_LISTENER_SERVICE) &&
+					(lstnr_resp->ifd_data[i].fd > 0)) {
+		if ((lstnr_resp->resp_len < sizeof(uint64_t)) ||
+			(lstnr_resp->ifd_data[i].cmd_buf_offset >
+			lstnr_resp->resp_len - sizeof(uint64_t))) {
+			pr_err("Invalid offset (lstnr resp len) 0x%x\n",
+				lstnr_resp->ifd_data[i].cmd_buf_offset);
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 static int __qseecom_update_cmd_buf(void *msg, bool cleanup,
 			struct qseecom_dev_handle *data)
 {
@@ -4052,7 +4081,8 @@ static int __qseecom_update_cmd_buf_64(void *msg, bool cleanup,
 		if (sg_ptr->nents == 1) {
 			uint64_t *update_64bit;
 
-			if (__boundary_checks_offset(req, lstnr_resp, data, i))
+			if (__boundary_checks_offset_64(req, lstnr_resp,
+							data, i))
 				goto err;
 				/* 64bit app uses 64bit address */
 			update_64bit = (uint64_t *) field;
@@ -5013,7 +5043,6 @@ int qseecom_shutdown_app(struct qseecom_handle **handle)
 		kzfree(kclient);
 		*handle = NULL;
 	}
-
 	__wakeup_unload_app_kthread();
 	return ret;
 }
@@ -6874,9 +6903,11 @@ static int __qseecom_update_qteec_req_buf(struct qseecom_qteec_modfd_req *req,
 	for (i = 0; i < MAX_ION_FD; i++) {
 		if (req->ifd_data[i].fd > 0) {
 			ion_fd = req->ifd_data[i].fd;
-			if ((req->req_len < sizeof(uint32_t)) ||
+			if ((req->req_len <
+				sizeof(struct qseecom_param_memref)) ||
 				(req->ifd_data[i].cmd_buf_offset >
-				req->req_len - sizeof(uint32_t))) {
+				req->req_len -
+				sizeof(struct qseecom_param_memref))) {
 				pr_err("Invalid offset/req len 0x%x/0x%x\n",
 					req->req_len,
 					req->ifd_data[i].cmd_buf_offset);
@@ -7766,6 +7797,13 @@ static long qseecom_ioctl(struct file *file,
 		break;
 	}
 	case QSEECOM_IOCTL_APP_LOADED_QUERY_REQ: {
+		if ((data->type != QSEECOM_GENERIC) &&
+			(data->type != QSEECOM_CLIENT_APP)) {
+			pr_err("app loaded query req: invalid handle (%d)\n",
+								data->type);
+			ret = -EINVAL;
+			break;
+		}
 		data->type = QSEECOM_CLIENT_APP;
 		mutex_lock(&app_access_lock);
 		atomic_inc(&data->ioctl_count);
@@ -8108,30 +8146,56 @@ static int qseecom_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
+static void __qseecom_release_disable_clk(struct qseecom_dev_handle *data)
+{
+	if (qseecom.no_clock_support)
+		return;
+	if (qseecom.support_bus_scaling) {
+		mutex_lock(&qsee_bw_mutex);
+		if (data->mode != INACTIVE) {
+			qseecom_unregister_bus_bandwidth_needs(data);
+			if (qseecom.cumulative_mode == INACTIVE)
+				__qseecom_set_msm_bus_request(INACTIVE);
+		}
+		mutex_unlock(&qsee_bw_mutex);
+	} else {
+		if (data->fast_load_enabled)
+			qsee_disable_clock_vote(data, CLK_SFPB);
+		if (data->perf_enabled)
+			qsee_disable_clock_vote(data, CLK_DFAB);
+	}
+}
+
 static int qseecom_release(struct inode *inode, struct file *file)
 {
 	struct qseecom_dev_handle *data = file->private_data;
 	int ret = 0;
 	bool free_private_data = true;
 
-	if (data->released == false) {
+	__qseecom_release_disable_clk(data);
+	if (!data->released) {
 		pr_debug("data: released=false, type=%d, mode=%d, data=0x%pK\n",
 			data->type, data->mode, data);
 		switch (data->type) {
 		case QSEECOM_LISTENER_SERVICE:
 			pr_debug("release lsnr svc %d\n", data->listener.id);
-			free_private_data = false;
 			mutex_lock(&listener_access_lock);
 			ret = qseecom_unregister_listener(data);
+			if (!ret)
+				free_private_data = false;
 			data->listener.release_called = true;
 			mutex_unlock(&listener_access_lock);
+			__wakeup_unregister_listener_kthread();
 			break;
 		case QSEECOM_CLIENT_APP:
 			pr_debug("release app %d (%s)\n",
 				data->client.app_id, data->client.app_name);
 			if (data->client.app_id) {
 				free_private_data = false;
+				mutex_lock(&unload_app_pending_list_lock);
 				ret = qseecom_prepare_unload_app(data);
+				mutex_unlock(&unload_app_pending_list_lock);
+				__wakeup_unload_app_kthread();
 			}
 			break;
 		case QSEECOM_SECURE_SERVICE:
@@ -8148,24 +8212,6 @@ static int qseecom_release(struct inode *inode, struct file *file)
 				data->type);
 			break;
 		}
-	}
-
-	if (qseecom.support_bus_scaling) {
-		mutex_lock(&qsee_bw_mutex);
-		if (data->mode != INACTIVE) {
-			qseecom_unregister_bus_bandwidth_needs(data);
-			if (qseecom.cumulative_mode == INACTIVE) {
-				ret = __qseecom_set_msm_bus_request(INACTIVE);
-				if (ret)
-					pr_err("Fail to scale down bus\n");
-			}
-		}
-		mutex_unlock(&qsee_bw_mutex);
-	} else {
-		if (data->fast_load_enabled == true)
-			qsee_disable_clock_vote(data, CLK_SFPB);
-		if (data->perf_enabled == true)
-			qsee_disable_clock_vote(data, CLK_DFAB);
 	}
 
 	if (free_private_data)
@@ -9223,6 +9269,7 @@ static int qseecom_probe(struct platform_device *pdev)
 	}
 	atomic_set(&qseecom.unregister_lsnr_kthread_state,
 					LSNR_UNREG_KT_SLEEP);
+
 	/*create a kthread to process pending ta unloading task */
 	qseecom.unload_app_kthread_task = kthread_run(
 			__qseecom_unload_app_kthread_func,
