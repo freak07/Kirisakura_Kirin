@@ -866,6 +866,12 @@ static int cnss_qca6290_shutdown(struct cnss_pci_data *pci_priv)
 
 	cnss_power_off_device(plat_priv);
 
+	if (test_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state)) {
+		cnss_pr_dbg("recovery sleep start\n");
+		msleep(200);
+		cnss_pr_dbg("recovery sleep 200ms done\n");
+	}
+
 	pci_priv->remap_window = 0;
 
 	clear_bit(CNSS_FW_READY, &plat_priv->driver_state);
@@ -2730,8 +2736,9 @@ static int cnss_pci_register_mhi(struct cnss_pci_data *pci_priv)
 		mhi_ctrl->iova_stop = pci_priv->smmu_iova_start +
 					pci_priv->smmu_iova_len;
 	} else {
-		mhi_ctrl->iova_start = memblock_start_of_DRAM();
-		mhi_ctrl->iova_stop = memblock_end_of_DRAM();
+		/* assume all addresses are valid */
+		mhi_ctrl->iova_start = 0;
+		mhi_ctrl->iova_stop = (dma_addr_t)U64_MAX;
 	}
 
 	mhi_ctrl->link_status = cnss_mhi_link_status;

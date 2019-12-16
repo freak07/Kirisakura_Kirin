@@ -10,9 +10,8 @@
  * GNU General Public License for more details.
  */
 
-/* -------------------------------------------------------------------------
+/*
  * Includes
- * -------------------------------------------------------------------------
  */
 #include <linux/clk.h>
 #include <linux/interrupt.h>
@@ -29,9 +28,8 @@
 #include "npu_common.h"
 #include "npu_hw.h"
 
-/* -------------------------------------------------------------------------
+/*
  * Defines
- * -------------------------------------------------------------------------
  */
 #define CLASS_NAME              "npu"
 #define DRIVER_NAME             "msm_npu"
@@ -40,9 +38,8 @@
 
 #define MBOX_OP_TIMEOUTMS 1000
 
-/* -------------------------------------------------------------------------
+/*
  * File Scope Prototypes
- * -------------------------------------------------------------------------
  */
 static int npu_enable_regulators(struct npu_device *npu_dev);
 static void npu_disable_regulators(struct npu_device *npu_dev);
@@ -119,9 +116,8 @@ static int npu_resume(struct platform_device *dev);
 static int __init npu_init(void);
 static void __exit npu_exit(void);
 
-/* -------------------------------------------------------------------------
+/*
  * File Scope Variables
- * -------------------------------------------------------------------------
  */
 static const char * const npu_post_clocks[] = {
 };
@@ -164,9 +160,8 @@ static const struct npu_irq npu_irq_info[] = {
 
 static struct npu_device *g_npu_dev;
 
-/* -------------------------------------------------------------------------
+/*
  * Entry Points for Probe
- * -------------------------------------------------------------------------
  */
 /* Sys FS */
 static DEVICE_ATTR_RO(caps);
@@ -224,9 +219,8 @@ static const struct thermal_cooling_device_ops npu_cooling_ops = {
 	.set_cur_state = npu_set_cur_state,
 };
 
-/* -------------------------------------------------------------------------
+/*
  * SysFS - Capabilities
- * -------------------------------------------------------------------------
  */
 static ssize_t caps_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -245,9 +239,8 @@ static ssize_t caps_show(struct device *dev,
 	return ret;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * SysFS - Power State
- * -------------------------------------------------------------------------
  */
 static ssize_t pwr_show(struct device *dev,
 					 struct device_attribute *attr,
@@ -280,9 +273,8 @@ static ssize_t pwr_store(struct device *dev,
 	return count;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * SysFS - Power State
- * -------------------------------------------------------------------------
  */
 static ssize_t perf_mode_override_show(struct device *dev,
 					 struct device_attribute *attr,
@@ -360,9 +352,9 @@ static ssize_t dcvs_mode_store(struct device *dev,
 
 	return count;
 }
-/* -------------------------------------------------------------------------
+
+/*
  * SysFS - npu_boot
- * -------------------------------------------------------------------------
  */
 static ssize_t boot_store(struct device *dev,
 					  struct device_attribute *attr,
@@ -390,9 +382,8 @@ static ssize_t boot_store(struct device *dev,
 	return count;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Power Related
- * -------------------------------------------------------------------------
  */
 int npu_enable_core_power(struct npu_device *npu_dev)
 {
@@ -623,9 +614,8 @@ int npu_set_uc_power_level(struct npu_device *npu_dev,
 	return npu_set_power_level(npu_dev, true);
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Bandwidth Monitor Related
- * -------------------------------------------------------------------------
  */
 static void npu_suspend_devbw(struct npu_device *npu_dev)
 {
@@ -659,9 +649,8 @@ static void npu_resume_devbw(struct npu_device *npu_dev)
 	}
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Clocks Related
- * -------------------------------------------------------------------------
  */
 static bool npu_is_post_clock(const char *clk_name)
 {
@@ -811,9 +800,8 @@ static void npu_disable_clocks(struct npu_device *npu_dev, bool post_pil)
 	}
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Thermal Functions
- * -------------------------------------------------------------------------
  */
 static int npu_get_max_state(struct thermal_cooling_device *cdev,
 				 unsigned long *state)
@@ -857,9 +845,8 @@ npu_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
 	return npu_host_update_power(npu_dev);
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Regulator Related
- * -------------------------------------------------------------------------
  */
 static int npu_enable_regulators(struct npu_device *npu_dev)
 {
@@ -902,9 +889,8 @@ static void npu_disable_regulators(struct npu_device *npu_dev)
 	}
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Interrupt Related
- * -------------------------------------------------------------------------
  */
 int npu_enable_irq(struct npu_device *npu_dev)
 {
@@ -969,9 +955,8 @@ void npu_disable_irq(struct npu_device *npu_dev)
 	NPU_DBG("irq disabled\n");
 }
 
-/* -------------------------------------------------------------------------
+/*
  * System Cache
- * -------------------------------------------------------------------------
  */
 int npu_enable_sys_cache(struct npu_device *npu_dev)
 {
@@ -1042,9 +1027,8 @@ void npu_disable_sys_cache(struct npu_device *npu_dev)
 	}
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Open/Close
- * -------------------------------------------------------------------------
  */
 static int npu_open(struct inode *inode, struct file *file)
 {
@@ -1085,9 +1069,8 @@ static int npu_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * IOCTL Implementations
- * -------------------------------------------------------------------------
  */
 static int npu_get_info(struct npu_client *client, unsigned long arg)
 {
@@ -1564,9 +1547,8 @@ static unsigned int npu_poll(struct file *filp, struct poll_table_struct *p)
 	return rc;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Device Tree Parsing
- * -------------------------------------------------------------------------
  */
 static int npu_parse_dt_clock(struct npu_device *npu_dev)
 {
@@ -1966,9 +1948,8 @@ static int npu_irq_init(struct npu_device *npu_dev)
 	return ret;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Mailbox
- * -------------------------------------------------------------------------
  */
 static int npu_ipcc_bridge_mbox_send_data(struct mbox_chan *chan, void *data)
 {
@@ -2199,9 +2180,8 @@ static int npu_hw_info_init(struct npu_device *npu_dev)
 	return rc;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Probe/Remove
- * -------------------------------------------------------------------------
  */
 static int npu_probe(struct platform_device *pdev)
 {
@@ -2471,9 +2451,8 @@ static int npu_remove(struct platform_device *pdev)
 	return 0;
 }
 
-/* -------------------------------------------------------------------------
+/*
  * Suspend/Resume
- * -------------------------------------------------------------------------
  */
 #if defined(CONFIG_PM)
 static int npu_suspend(struct platform_device *dev, pm_message_t state)
@@ -2487,9 +2466,8 @@ static int npu_resume(struct platform_device *dev)
 }
 #endif
 
-/* -------------------------------------------------------------------------
+/*
  * Module Entry Points
- * -------------------------------------------------------------------------
  */
 static int __init npu_init(void)
 {

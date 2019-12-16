@@ -2471,6 +2471,12 @@ static const struct ipa_ep_configuration ipa3_ep_mapping
 			IPA_DPS_HPS_SEQ_TYPE_DMA_ONLY,
 			QMB_MASTER_SELECT_DDR,
 			{ 7, 9, 20, 24, IPA_EE_AP, GSI_ESCAPE_BUF_ONLY, 0 } },
+	[IPA_4_5_MHI][IPA_CLIENT_APPS_WAN_PROD]	  = {
+			true, IPA_v4_5_MHI_GROUP_DDR,
+			true,
+			IPA_DPS_HPS_SEQ_TYPE_2ND_PKT_PROCESS_PASS_NO_DEC_UCP,
+			QMB_MASTER_SELECT_DDR,
+			{ 2, 7, 16, 32, IPA_EE_AP, GSI_SMART_PRE_FETCH, 7 } },
 	[IPA_4_5_MHI][IPA_CLIENT_Q6_WAN_PROD]		= {
 			true, IPA_v4_5_MHI_GROUP_DDR,
 			true,
@@ -2527,6 +2533,12 @@ static const struct ipa_ep_configuration ipa3_ep_mapping
 			IPA_DPS_HPS_SEQ_TYPE_INVALID,
 			QMB_MASTER_SELECT_DDR,
 			{ 16, 10, 9, 9, IPA_EE_AP, GSI_ESCAPE_BUF_ONLY, 0 } },
+	[IPA_4_5_MHI][IPA_CLIENT_APPS_WAN_CONS]       = {
+			true, IPA_v4_5_MHI_GROUP_DDR,
+			false,
+			IPA_DPS_HPS_SEQ_TYPE_INVALID,
+			QMB_MASTER_SELECT_DDR,
+			{ 25, 16, 9, 9, IPA_EE_AP, GSI_ESCAPE_BUF_ONLY, 0 } },
 	[IPA_4_5_MHI][IPA_CLIENT_USB_DPL_CONS]        = {
 			true, IPA_v4_5_MHI_GROUP_DDR,
 			false,
@@ -2829,12 +2841,8 @@ static struct ipa3_mem_partition ipa_4_5_mem_part = {
 	.apps_hdr_proc_ctx_ofst		= 0x15f0,
 	.apps_hdr_proc_ctx_size		= 0x200,
 	.apps_hdr_proc_ctx_size_ddr	= 0x0,
-	.nat_tbl_ofst			= 0x1800,
-	.nat_tbl_size			= 0x800,
-	.nat_index_tbl_ofst		= 0x2000,
-	.nat_index_tbl_size		= 0x100,
-	.nat_exp_tbl_ofst		= 0x2100,
-	.nat_exp_tbl_size		= 0x400,
+	.nat_tbl_ofst            = 0x00001800,
+	.nat_tbl_size            = 0x00000D00,
 	.stats_quota_ofst		= 0x2510,
 	.stats_quota_size		= 0x78,
 	.stats_tethering_ofst		= 0x2588,
@@ -5453,32 +5461,12 @@ int ipa3_init_mem_partition(enum ipa_hw_type type)
 	}
 
 	IPADBG("NAT TBL OFST 0x%x SIZE 0x%x\n",
-		IPA_MEM_PART(nat_tbl_ofst),
-		IPA_MEM_PART(nat_tbl_size));
+		   IPA_MEM_PART(nat_tbl_ofst),
+		   IPA_MEM_PART(nat_tbl_size));
 
 	if (IPA_MEM_PART(nat_tbl_ofst) & 31) {
-		IPAERR("NAT TBL OFST 0x%x is unaligned\n",
-			IPA_MEM_PART(nat_tbl_ofst));
-		return -ENODEV;
-	}
-
-	IPADBG("NAT INDEX TBL OFST 0x%x SIZE 0x%x\n",
-		IPA_MEM_PART(nat_index_tbl_ofst),
-		IPA_MEM_PART(nat_index_tbl_size));
-
-	if (IPA_MEM_PART(nat_index_tbl_ofst) & 3) {
-		IPAERR("NAT INDEX TBL OFST 0x%x is unaligned\n",
-			IPA_MEM_PART(nat_index_tbl_ofst));
-		return -ENODEV;
-	}
-
-	IPADBG("NAT EXP TBL OFST 0x%x SIZE 0x%x\n",
-		IPA_MEM_PART(nat_exp_tbl_ofst),
-		IPA_MEM_PART(nat_exp_tbl_size));
-
-	if (IPA_MEM_PART(nat_exp_tbl_ofst) & 31) {
-		IPAERR("NAT EXP TBL OFST 0x%x is unaligned\n",
-			IPA_MEM_PART(nat_exp_tbl_ofst));
+		IPAERR("NAT TBL OFST 0x%x is not aligned properly\n",
+			   IPA_MEM_PART(nat_tbl_ofst));
 		return -ENODEV;
 	}
 

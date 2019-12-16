@@ -604,31 +604,6 @@ static int qcom_smp2p_alloc_item(struct platform_device *pdev,
 	return ret;
 }
 
-static void qcom_smp2p_release_item(struct device *dev,
-					struct qcom_smp2p *smp2p)
-{
-	struct smp2p_entry *entry;
-	struct smp2p_entry *next_entry;
-
-	/* Walk through the out bound list and release state and entry */
-	list_for_each_entry_safe(entry, next_entry, &smp2p->outbound, node) {
-		qcom_smem_state_unregister(entry->state);
-		list_del(&entry->node);
-		devm_kfree(smp2p->dev, entry);
-	}
-	INIT_LIST_HEAD(&smp2p->outbound);
-
-	/* Walk through the inbound list and release domain and entry */
-	list_for_each_entry_safe(entry, next_entry, &smp2p->inbound, node) {
-		irq_domain_remove(entry->domain);
-		list_del(&entry->node);
-		devm_kfree(smp2p->dev, entry);
-	}
-	INIT_LIST_HEAD(&smp2p->inbound);
-	/* remove wakeup source */
-	wakeup_source_trash(&smp2p->ws);
-}
-
 static int qcom_smp2p_probe(struct platform_device *pdev)
 {
 	struct smp2p_entry *entry;
