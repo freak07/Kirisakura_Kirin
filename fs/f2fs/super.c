@@ -3256,7 +3256,7 @@ try_onemore:
 	}
 
 	if (__is_set_ckpt_flags(F2FS_CKPT(sbi), CP_QUOTA_NEED_FSCK_FLAG)) {
-		f2fs_msg(sb, KERN_ERR, "f2fs_fill_super(): Set SBI_QUOTA_NEED_REPAIR because of CP_QUOTA_NEED_FSCK_FLAG");
+		f2fs_info(sbi, "f2fs_fill_super(): Set SBI_QUOTA_NEED_REPAIR because of CP_QUOTA_NEED_FSCK_FLAG");
 		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
 	}
 	if (__is_set_ckpt_flags(F2FS_CKPT(sbi), CP_DISABLED_QUICK_FLAG)) {

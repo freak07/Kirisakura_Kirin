@@ -1115,7 +1115,7 @@ static int __submit_discard_cmd(struct f2fs_sb_info *sbi,
 		return 0;
 
 	if (is_sbi_flag_set(sbi, SBI_NEED_FSCK)) {
-		f2fs_msg(sbi->sb, KERN_WARNING,	"__submit_discard_cmd(): SBI_NEED_FSCK");
+		f2fs_info(sbi, "__submit_discard_cmd(): SBI_NEED_FSCK");
 		return 0;
 	}
 
@@ -1710,7 +1710,7 @@ static int issue_discard_thread(void *data)
 		if (kthread_should_stop())
 			return 0;
 		if (is_sbi_flag_set(sbi, SBI_NEED_FSCK)) {
-			f2fs_msg(sbi->sb, KERN_WARNING,	"issue_discard_thread(): SBI_NEED_FSCK");
+			f2fs_info(sbi, "issue_discard_thread(): SBI_NEED_FSCK");
 			wait_ms = dpolicy.max_interval;
 			continue;
 		}
