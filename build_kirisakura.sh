@@ -17,14 +17,15 @@ export CLANG_PATH=/media/miles/Storage/CLANG_TC/tc-build/install/bin
 export PATH=${CLANG_PATH}:${PATH}
 export CLANG_TRIPLE=aarch64-linux-gnu-
 export CROSS_COMPILE=~/Android_Build/GCC_Google_Arm64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+export LD_LIBRARY_PATH=/media/miles/Storage/CLANG_TC/tc-build/install/lib:$LD_LIBRARY_PATH
 
 echo
 echo "Set DEFCONFIG"
 echo 
-make CC=clang O=out kirisakura_defconfig
+make CC=clang AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out kirisakura_defconfig
 
 echo
 echo "Build The Good Stuff"
 echo 
 
-make CC=clang O=out -j4
+make CC=clang AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip O=out -j4
