@@ -116,6 +116,9 @@
 #define FDE_FLAG_POS    4
 #define ENABLE_KEY_WRAP_IN_KS    (1 << FDE_FLAG_POS)
 
+int g_test = 0;
+extern int g_QPST_property;
+
 enum qseecom_clk_definitions {
 	CLK_DFAB = 0,
 	CLK_SFPB,
@@ -451,15 +454,32 @@ __setup("androidboot.keymaster=", get_qseecom_keymaster_status);
 
 #define QSEECOM_SCM_EBUSY_WAIT_MS 30
 #define QSEECOM_SCM_EBUSY_MAX_RETRY 67
+#define RETRY_COUNTS_FOR_PANIC		60 //2 minutes
 
 static int __qseecom_scm_call2_locked(uint32_t smc_id, struct scm_desc *desc)
 {
 	int ret = 0;
 	int retry_count = 0;
 
+#ifdef RETRY_COUNTS_FOR_PANIC
+	static int panic_retry = 0;
+	static int isCmd2fp=0;
+	//pr_warn("qseecom: g_test is %d\n", g_test);
+#endif
+
 	do {
-		ret = scm_call2_noretry(smc_id, desc);
+		if( g_test == 0 )
+			ret = scm_call2_noretry(smc_id, desc);
+		else
+			ret =  -EBUSY;
+
 		if (ret == -EBUSY) {
+	#ifdef RETRY_COUNTS_FOR_PANIC
+			//pr_warn("The secure world is busy. Wait for a monent.\n");
+			if(desc->args[0] == 4) { // To check if it is goodixfp
+				isCmd2fp = 1;
+			}
+	#endif
 			mutex_unlock(&app_access_lock);
 			msleep(QSEECOM_SCM_EBUSY_WAIT_MS);
 			mutex_lock(&app_access_lock);
@@ -468,6 +488,23 @@ static int __qseecom_scm_call2_locked(uint32_t smc_id, struct scm_desc *desc)
 			pr_warn("secure world has been busy for 1 second!\n");
 	} while (ret == -EBUSY &&
 			(retry_count++ < QSEECOM_SCM_EBUSY_MAX_RETRY));
+
+#ifdef RETRY_COUNTS_FOR_PANIC
+	if((ret == -EBUSY) && (retry_count >= QSEECOM_SCM_EBUSY_MAX_RETRY)  && (isCmd2fp == 1)) {
+		if( panic_retry >= RETRY_COUNTS_FOR_PANIC ) {
+			pr_warn("secure world has been busy for %d second!\n",RETRY_COUNTS_FOR_PANIC*2);
+			//To trigger kernel panic
+			panic("secure world busy.");
+			panic_retry = 0;
+			isCmd2fp = 0;
+		} else {
+			panic_retry ++;
+		}
+	} else {
+		panic_retry = 0;
+		isCmd2fp = 0;
+	}
+#endif
 	return ret;
 }
 
@@ -2528,6 +2565,7 @@ static int __qseecom_check_app_exists(struct qseecom_check_app_ireq *req,
 
 	/* check if app exists and has been registered locally */
 	spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
+
 	list_for_each_entry(entry,
 			&qseecom.registered_app_list_head, list) {
 		if (!strcmp(entry->app_name, req->app_name)) {
@@ -3626,6 +3664,16 @@ static int __qseecom_send_cmd(struct qseecom_dev_handle *data,
 	if (ret) {
 		pr_err("scm_call() failed with err: %d (app_id = %d)\n",
 					ret, data->client.app_id);
+
+		 pr_err("scm_call() failed with err: %d (app_id = %d) (app_name = %s)\n",
+		 			ret, data->client.app_id ,(char *)data->client.app_name);
+
+		 if ((ret == -16) || (ret == -12)){
+		 	if( g_QPST_property == 1){
+		 		BUG_ON(1);
+		 	}
+		 }
+
 		goto exit;
 	}
 	if (data->client.dmabuf) {
@@ -8988,6 +9036,43 @@ static int qseecom_check_whitelist_feature(void)
 	return version >= MAKE_WHITELIST_VERSION(1, 0, 0);
 }
 
+static ssize_t g_var_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc;
+	u32 val;
+
+	rc = kstrtouint(buf, 0, &val);
+	if (rc < 0)
+		return rc;
+
+	g_test = val;
+	printk("qseecom: g_test = %d\n", g_test);
+
+	return count;
+}
+
+/* sysfs attributes exported by flash_led */
+static struct device_attribute qseecom_attrs[] = {
+	__ATTR(test, 0664, NULL, g_var_store),
+};
+
+static int create_sysfs_interfaces(struct device *dev)
+{
+    int i;
+    for (i = 0; i < ARRAY_SIZE(qseecom_attrs); i++)
+        if (device_create_file(dev, qseecom_attrs + i))
+            goto error;
+        return 0;
+
+error:
+    printk("qseecom: %s error, i = %d\n", __func__, i );
+    for ( ; i >= 0; i--)
+          device_remove_file(dev, qseecom_attrs + i);
+          dev_err(dev, "qseecom: %s:Unable to create interface\n", __func__);
+         return -1;
+}
+
 static int qseecom_probe(struct platform_device *pdev)
 {
 	int rc;
@@ -9283,6 +9368,10 @@ static int qseecom_probe(struct platform_device *pdev)
 						UNLOAD_APP_KT_SLEEP);
 
 	atomic_set(&qseecom.qseecom_state, QSEECOM_STATE_READY);
+
+	 if ( create_sysfs_interfaces(class_dev) ) {
+            printk("qseecom: create_sysfs_interface failed\n");
+      }
 	return 0;
 
 exit_kill_unreg_lsnr_kthread:

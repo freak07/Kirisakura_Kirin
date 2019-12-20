@@ -542,6 +542,7 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 				asus_lcd_bridge_enable = 1;
 
 				/* reset early on flag because this is real call */
+				printk("[Display] reset early on flag\n");
 				display_on_trig_by_early = false;
 			}
 		}

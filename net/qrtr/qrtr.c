@@ -238,11 +238,13 @@ static const struct {
 	{ 41, "RF radiated performance enhancement service" },
 	{ 42, "Data system determination service" },
 	{ 43, "Subsystem control service" },
+	{ 48, "Data Filter Service" },
 	{ 49, "IPA control service" },
 	{ 51, "CoreSight remote tracing service" },
 	{ 64, "Service registry locator service" },
 	{ 66, "Service registry notification service" },
 	{ 69, "ATH10k WLAN firmware service" },
+	{ 78, "Data Flow Control service" },
 	{ 224, "Card Application Toolkit service (v1)" },
 	{ 225, "Remote Management Service" },
 	{ 226, "Open Mobile Alliance device management service" },
@@ -297,6 +299,13 @@ static const char *SearchServicebyServerInfo(struct qrtr_cb *cb) {
 				break;
 			}
 		}
+	}
+
+	if (name==NULL) {
+		pr_err("[WakeUpInfo-QRTR] <unknown> service id = %u src[0x%x:0x%x] dst[0x%x:0x%x]\n",
+			service, cb->src_node, cb->src_port, cb->dst_node, cb->dst_port);
+		ASUSEvtlog("[WakeUpInfo-QRTR] <unknown> service id = %u src[0x%x:0x%x] dst[0x%x:0x%x]\n",
+			service, cb->src_node, cb->src_port, cb->dst_node, cb->dst_port);
 	}
 
 	return name ? name : "<unknown>";
@@ -397,6 +406,13 @@ static void qrtr_log_rx_msg(struct qrtr_node *node, struct sk_buff *skb)
 
 	} else {
 		skb_copy_bits(skb, 0, &pkt, sizeof(pkt));
+
+		/*AS-K Log Modem Wake Up QMI Info+*/
+		if (modem_resume_irq_flag_function()) {
+			pr_err("[WakeUpInfo-QRTR] RX CTRL: cmd:0x%x\n", cb->type);
+		}
+		/*AS-K Log Modem Wake Up QMI Info-*/
+
 		if (cb->type == QRTR_TYPE_NEW_SERVER ||
 		    cb->type == QRTR_TYPE_DEL_SERVER)
 			QRTR_INFO(node->ilc,
