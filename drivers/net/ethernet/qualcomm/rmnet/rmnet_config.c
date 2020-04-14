@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -264,6 +264,8 @@ static void rmnet_dellink(struct net_device *dev, struct list_head *head)
 
 	unregister_netdevice(dev);
 
+	qmi_rmnet_qos_exit_post();
+
 	rmnet_unregister_real_device(real_dev, port);
 }
 
@@ -301,10 +303,13 @@ static void rmnet_force_unassociate_device(struct net_device *dev)
 		hlist_del(&ep->hlnode);
 		kfree(ep);
 	}
+
 	/* Unregistering devices in context before freeing port.
 	 * If this API becomes non-context their order should switch.
 	 */
 	unregister_netdevice_many(&list);
+
+	qmi_rmnet_qos_exit_post();
 
 	rmnet_unregister_real_device(real_dev, port);
 }
@@ -351,7 +356,7 @@ static int rmnet_rtnl_validate(struct nlattr *tb[], struct nlattr *data[],
 
 		if (data[IFLA_RMNET_UL_AGG_PARAMS]) {
 			agg_params = nla_data(data[IFLA_RMNET_UL_AGG_PARAMS]);
-			if (agg_params->agg_time < 3000000)
+			if (agg_params->agg_time < 1000000)
 				return -EINVAL;
 		}
 	}

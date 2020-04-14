@@ -1,4 +1,4 @@
-/* Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -545,8 +545,9 @@ static int mhi_qcom_power_up(struct mhi_controller *mhi_cntrl)
 			return -EIO;
 	}
 
-	/* when coming out of SSR, initial ee state is not valid */
+	/* when coming out of SSR, initial states are not valid */
 	mhi_cntrl->ee = 0;
+	mhi_cntrl->power_down = false;
 
 	ret = mhi_arch_power_up(mhi_cntrl);
 	if (ret)
@@ -605,6 +606,7 @@ static void mhi_status_cb(struct mhi_controller *mhi_cntrl,
 		if (!ret)
 			mhi_runtime_resume(dev);
 		pm_runtime_put(dev);
+		mhi_arch_mission_mode_enter(mhi_cntrl);
 		break;
 	default:
 		MHI_ERR("Unhandled cb:0x%x\n", reason);
@@ -779,8 +781,29 @@ static struct mhi_controller *mhi_register_controller(struct pci_dev *pci_dev)
 	if (ret)
 		goto error_register;
 
+	if (mhi_dev->allow_m1)
+		goto skip_offload;
+
+	mhi_cntrl->offload_wq = alloc_ordered_workqueue("offload_wq",
+			WQ_MEM_RECLAIM | WQ_HIGHPRI);
+	if (!mhi_cntrl->offload_wq)
+		goto error_register;
+
+	INIT_WORK(&mhi_cntrl->reg_write_work, mhi_reg_write_work);
+
+	mhi_cntrl->reg_write_q = kcalloc(REG_WRITE_QUEUE_LEN,
+					sizeof(*mhi_cntrl->reg_write_q),
+					GFP_KERNEL);
+	if (!mhi_cntrl->reg_write_q)
+		goto error_free_wq;
+
+	atomic_set(&mhi_cntrl->write_idx, -1);
+
+skip_offload:
 	return mhi_cntrl;
 
+error_free_wq:
+	destroy_workqueue(mhi_cntrl->offload_wq);
 error_register:
 	mhi_free_controller(mhi_cntrl);
 
