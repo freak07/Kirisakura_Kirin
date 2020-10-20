@@ -471,7 +471,7 @@ static int proximity_set_threshold(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-	    g_ps_data->g_ps_calvalue_hi = ret;
+	    g_ps_data->g_ps_calvalue_hi = 450;
 		log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
@@ -514,7 +514,7 @@ static int proximity_set_threshold(void)
 	
 	ret = psensor_factory_read_1cm();
 	if(ret > 0){
-		pocket_mode_threshold = ret;
+		pocket_mode_threshold = 470;
 		log("Proximity read Pocket Mode Calibration : %d\n", pocket_mode_threshold);
 	}else{
 		pocket_mode_threshold = 470;
@@ -546,7 +546,7 @@ static void proximity_polling_adc(struct work_struct *work)
 					err("Proximity get adc ERROR\n");	
 				} else {
 					if(g_ps_data->g_ps_int_status != ALSPS_INT_PS_CLOSE &&
-							(adc_value >= g_ps_data->g_ps_calvalue_hi &&
+							(adc_value >= 450 &&
 							(pocket_mode_threshold <= 0 || adc_value <= pocket_mode_threshold))) {
 						log("[Polling] Proximity Detect Object Close. (adc = %d)\n", adc_value);
 						psensor_report_abs(PSENSOR_REPORT_PS_CLOSE);
@@ -983,7 +983,7 @@ int mproximity_show_calibration_hi(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(calvalue > 0) {
-	    	g_ps_data->g_ps_calvalue_hi = calvalue;
+	    	g_ps_data->g_ps_calvalue_hi = 450;
 		log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
@@ -1640,7 +1640,7 @@ int mproximity_store_switch_onoff(bool bOn)
 			
 			/* check if send first AWAY */
 			adc_value = ALSPS_FRGB_hw_client->mpsensor_hw->proximity_hw_get_adc();
-			threshold_high =  (g_ps_data->g_ps_calvalue_hi);
+			threshold_high =  450;
 			log("Proximity adc_value=%d, threshold_high=%d\n", adc_value, threshold_high);
 			if (adc_value < threshold_high) {
 				psensor_report_abs(PSENSOR_REPORT_PS_AWAY);
@@ -1929,7 +1929,7 @@ int mproximity_store_load_calibration_data()
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-		g_ps_data->g_ps_factory_cal_hi = ret;
+		g_ps_data->g_ps_factory_cal_hi = 450;
 	    log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_factory_cal_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_factory_cal_hi);
@@ -2213,11 +2213,18 @@ static void proximity_work(int state)
 			//touch_enable = 1;
 //#endif
 		} else if (ALSPS_INT_PS_CLOSE == state) {
-			if(pocket_mode_threshold > 0 && adc > pocket_mode_threshold){
+			if(adc < 450){
+				log("[ISR] Proximity Detect Object Close but Away. (adc = %d)\n", adc);
+				psensor_report_abs(PSENSOR_REPORT_PS_AWAY);
+				g_ps_data->g_ps_int_status = ALSPS_INT_PS_AWAY;
+				g_ps_data->event_counter++;
+			}
+			else if(pocket_mode_threshold > 0 && adc > pocket_mode_threshold){
 				log("[ISR] Proximity Detect Object Close. (adc = %d, distance < 1cm)\n", adc);		
 				psensor_report_abs(PSENSOR_REPORT_PS_POCKET);
 				g_ps_data->g_ps_int_status = ALSPS_INT_PS_POCKET;
-			}else{
+			}
+			else{
 				log("[ISR] Proximity Detect Object Close. (adc = %d)\n", adc);		
 				psensor_report_abs(PSENSOR_REPORT_PS_CLOSE);
 				g_ps_data->g_ps_int_status = ALSPS_INT_PS_CLOSE;
@@ -2476,7 +2483,7 @@ wake_lock(&g_alsps_frgb_wake_lock);
 	msleep(PROXIMITY_TURNON_DELAY_TIME);
 
 	adc_value = ALSPS_FRGB_hw_client->mpsensor_hw->proximity_hw_get_adc();
-	threshold_high =  (g_ps_data->g_ps_factory_cal_hi + g_ps_data->g_ps_autok_max);
+	threshold_high =  450;
 
 	if (adc_value >= threshold_high) {
 		status = true;
@@ -2531,10 +2538,10 @@ static int proximity_check_minCT(void)
 	/*update the min crosstalk value*/
 	for(round=0; round<PROXIMITY_AUTOK_COUNT; round++){	
 		mdelay(PROXIMITY_AUTOK_DELAY);
-		adc_value = ALSPS_FRGB_hw_client->mpsensor_hw->proximity_hw_get_adc();
+		adc_value = 450;
 		log("proximity auto calibration adc : %d\n", adc_value);
 		if(adc_value < crosstalk_min ){
-			crosstalk_min = adc_value;
+			crosstalk_min = 450;
 			log("Update the min for crosstalk : %d\n", crosstalk_min);
 		}
 	}
