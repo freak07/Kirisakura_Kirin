@@ -471,7 +471,7 @@ static int proximity_set_threshold(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-	    g_ps_data->g_ps_calvalue_hi = ret;
+	    g_ps_data->g_ps_calvalue_hi = 440;
 		log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
@@ -495,7 +495,7 @@ static int proximity_set_threshold(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-	    g_ps_data->g_ps_calvalue_lo = ret;
+	    g_ps_data->g_ps_calvalue_lo = 390;
 		log("Proximity read Low Calibration : %d\n", g_ps_data->g_ps_calvalue_lo);
 	}else{
 		err("Proximity read DEFAULT Low Calibration : %d\n", g_ps_data->g_ps_calvalue_lo);
@@ -983,7 +983,7 @@ int mproximity_show_calibration_hi(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(calvalue > 0) {
-	    	g_ps_data->g_ps_calvalue_hi = calvalue;
+	    	g_ps_data->g_ps_calvalue_hi = 440;
 		log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_calvalue_hi);
@@ -1034,7 +1034,7 @@ int mproximity_show_calibration_lo(void)
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(calvalue > 0) {
-	    	g_ps_data->g_ps_calvalue_lo = calvalue;
+	    	g_ps_data->g_ps_calvalue_lo = 390;
 		log("Proximity read Low Calibration : %d\n", g_ps_data->g_ps_calvalue_lo);
 	}else{
 		err("Proximity read DEFAULT Low Calibration : %d\n", g_ps_data->g_ps_calvalue_lo);
@@ -1929,7 +1929,7 @@ int mproximity_store_load_calibration_data()
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-		g_ps_data->g_ps_factory_cal_hi = ret;
+		g_ps_data->g_ps_factory_cal_hi = 440;
 	    log("Proximity read High Calibration : %d\n", g_ps_data->g_ps_factory_cal_hi);
 	}else{
 		err("Proximity read DEFAULT High Calibration : %d\n", g_ps_data->g_ps_factory_cal_hi);
@@ -1945,7 +1945,7 @@ int mproximity_store_load_calibration_data()
 	/*For transition period from 3/5 to 2/4 ---*/
 	
 	if(ret > 0) {
-		g_ps_data->g_ps_factory_cal_lo = ret;
+		g_ps_data->g_ps_factory_cal_lo = 390;
 		log("Proximity read Low Calibration : %d\n", g_ps_data->g_ps_factory_cal_lo);
 	}else{
 		err("Proximity read DEFAULT Low Calibration : %d\n", g_ps_data->g_ps_factory_cal_lo);
