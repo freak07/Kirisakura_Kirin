@@ -247,6 +247,11 @@ void dsi_rect_intersect(const struct dsi_rect *r1,
 	}
 }
 
+static bool bl_dimmer = true;
+module_param(bl_dimmer, bool, 0644);
+static int bl_min = 24;
+module_param(bl_min, int, 0644);
+
 int dsi_display_set_backlight(struct drm_connector *connector,
 		void *display, u32 bl_lvl)
 {
@@ -276,6 +281,18 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	bl_scale_ad = panel->bl_config.bl_scale_ad;
 	bl_temp = (u32)bl_temp * bl_scale_ad / MAX_AD_BL_SCALE_LEVEL;
 
+	if ((bl_dimmer == true) && (bl_temp == 64))
+		{
+		bl_temp = 50;
+		}
+	if ((bl_dimmer == true) && (bl_temp == 48))
+		{
+		bl_temp = 34;
+		}
+	if ((bl_dimmer == true) && (bl_temp == 32))
+		{
+		bl_temp = bl_min;
+		}
 	pr_debug("bl_scale = %u, bl_scale_ad = %u, bl_lvl = %u\n",
 		bl_scale, bl_scale_ad, (u32)bl_temp);
 
