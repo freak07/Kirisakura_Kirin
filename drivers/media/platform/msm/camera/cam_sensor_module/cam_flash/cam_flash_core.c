@@ -17,8 +17,13 @@
 #include "cam_res_mgr_api.h"
 #include "cam_common_util.h"
 #include "cam_packet_util.h"
+#include "asus_flash.h"
+#define UINT uint32_t
 
-static int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
+static int asus_bat_low = 0;
+static int asus_flash_state = 0;
+static struct cam_flash_ctrl *asus_fctrl;
+int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 	bool regulator_enable)
 {
 	int rc = 0;
@@ -251,7 +256,7 @@ int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,
 			}
 		}
 
-		rc = cam_sensor_core_power_up(power_info, soc_info);
+		rc = cam_sensor_core_power_up(power_info, soc_info, &(fctrl->io_master_info));
 		if (rc) {
 			CAM_ERR(CAM_FLASH, "power up the core is failed:%d",
 				rc);
@@ -261,13 +266,13 @@ int cam_flash_i2c_power_ops(struct cam_flash_ctrl *fctrl,
 		rc = camera_io_init(&(fctrl->io_master_info));
 		if (rc) {
 			CAM_ERR(CAM_FLASH, "cci_init failed: rc: %d", rc);
-			cam_sensor_util_power_down(power_info, soc_info);
+			cam_sensor_util_power_down(power_info, soc_info, &(fctrl->io_master_info));
 			goto free_pwr_settings;
 		}
 		fctrl->is_regulator_enabled = true;
 	} else if ((!regulator_enable) &&
 		(fctrl->is_regulator_enabled == true)) {
-		rc = cam_sensor_util_power_down(power_info, soc_info);
+		rc = cam_sensor_util_power_down(power_info, soc_info, &(fctrl->io_master_info));
 		if (rc) {
 			CAM_ERR(CAM_FLASH, "power down the core is failed:%d",
 				rc);
@@ -431,7 +436,11 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 		CAM_ERR(CAM_FLASH, "Fctrl or Data NULL");
 		return -EINVAL;
 	}
-
+	
+	if(asus_bat_low) {
+		CAM_DBG(CAM_FLASH, "asus_bat_low: %d",asus_bat_low);
+		return 0;
+	}
 	soc_private = (struct cam_flash_private_soc *)
 		flash_ctrl->soc_info.soc_private;
 
@@ -475,6 +484,8 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 			flash_ctrl->switch_trigger,
 			(enum led_brightness)LED_SWITCH_ON);
 
+	asus_flash_state = 1; //ASUS_BSP +++ Shianliang add low battery checking
+
 	return 0;
 }
 
@@ -485,15 +496,20 @@ int cam_flash_off(struct cam_flash_ctrl *flash_ctrl)
 		return -EINVAL;
 	}
 
+	CAM_DBG(CAM_FLASH, "LED_Flash flash_off"); //ASUS_BSP +++ Shianliang add low battery checking
+
 	if (flash_ctrl->switch_trigger)
 		cam_res_mgr_led_trigger_event(flash_ctrl->switch_trigger,
 			(enum led_brightness)LED_SWITCH_OFF);
 
 	flash_ctrl->flash_state = CAM_FLASH_STATE_START;
+
+	asus_flash_state = 0; //ASUS_BSP +++ Shianliang add low battery checking
+
 	return 0;
 }
 
-static int cam_flash_low(
+int cam_flash_low(
 	struct cam_flash_ctrl *flash_ctrl,
 	struct cam_flash_frame_setting *flash_data)
 {
@@ -518,7 +534,7 @@ static int cam_flash_low(
 	return rc;
 }
 
-static int cam_flash_high(
+int cam_flash_high(
 	struct cam_flash_ctrl *flash_ctrl,
 	struct cam_flash_frame_setting *flash_data)
 {
@@ -741,8 +757,50 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 					fctrl->flash_state);
 					return -EINVAL;
 				}
-
+				rc = cam_flash_prepare(fctrl, true);
+				if (rc) {
+					CAM_ERR(CAM_FLASH,
+					"Enable Regulator Failed rc = %d", rc);
+					return rc;
+				}
+#ifndef CAM_FACTORY_CONFIG
+				if(asus_flash_is_battery_low()) {
+					//ASUS_BSP +++ ZS630KL Control two leds together
+					{
+						UINT i = 0;
+						int curr = 0;
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] != 0)
+								curr = flash_data->led_current_ma[i];
+						}
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] == 0)
+								flash_data->led_current_ma[i] = curr;
+						}
+					}
+					//ASUS_BSP Zhengwei "use torch for flash if battery low"
+					//ASUS_BSP --- ZS630KL Control two leds together
+					rc = cam_flash_low(fctrl, flash_data);
+				} else {
+#endif
+				//ASUS_BSP +++ ZS630KL Control two leds together
+				{
+					UINT i = 0;
+					int curr = 0;
+					for (i = 0; i < fctrl->flash_num_sources; i++) {
+						if (flash_data->led_current_ma[i] != 0)
+							curr = flash_data->led_current_ma[i];
+					}
+					for (i = 0; i < fctrl->flash_num_sources; i++) {
+						if (flash_data->led_current_ma[i] == 0)
+							flash_data->led_current_ma[i] = curr;
+					}
+				}
+				//ASUS_BSP --- ZS630KL Control two leds together
 				rc = cam_flash_high(fctrl, flash_data);
+#ifndef CAM_FACTORY_CONFIG
+				}
+#endif
 				if (rc)
 					CAM_ERR(CAM_FLASH,
 						"FLASH ON failed : %d", rc);
@@ -756,7 +814,20 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 					fctrl->flash_state);
 					return -EINVAL;
 				}
-
+				//ASUS_BSP +++ ZS630KL Control two leds together
+				{
+					UINT i = 0;
+					int curr = 0;
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] != 0)
+							curr = flash_data->led_current_ma[i];
+					}
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] == 0)
+							flash_data->led_current_ma[i] = curr;
+					}
+				}
+				//ASUS_BSP --- ZS630KL Control two leds together
 				rc = cam_flash_low(fctrl, flash_data);
 				if (rc)
 					CAM_ERR(CAM_FLASH,
@@ -781,6 +852,20 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 
 			if (flash_data->opcode ==
 				CAMERA_SENSOR_FLASH_OP_FIRELOW) {
+					//ASUS_BSP +++ ZS630KL Control two leds together
+				{
+					UINT i = 0;
+					int curr = 0;
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] != 0)
+							curr = flash_data->led_current_ma[i];
+					}
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] == 0)
+							flash_data->led_current_ma[i] = curr;
+					}
+				}
+				//ASUS_BSP --- ZS630KL Control two leds together
 				rc = cam_flash_low(fctrl, flash_data);
 				if (rc) {
 					CAM_ERR(CAM_FLASH,
@@ -813,8 +898,21 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 			num_iterations = flash_data->num_iterations;
 			for (i = 0; i < num_iterations; i++) {
 				/* Turn On Torch */
-				if (fctrl->flash_state ==
-					CAM_FLASH_STATE_START) {
+				if (fctrl->flash_state == CAM_FLASH_STATE_START) {
+					//ASUS_BSP +++ ZS630KL Control two leds together
+					{
+						UINT i = 0;
+						int curr = 0;
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] != 0)
+								curr = flash_data->led_current_ma[i];
+						}
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] == 0)
+								flash_data->led_current_ma[i] = curr;
+						}
+					}
+					//ASUS_BSP --- ZS630KL Control two leds together
 					rc = cam_flash_low(fctrl, flash_data);
 					if (rc) {
 						CAM_ERR(CAM_FLASH,
@@ -851,7 +949,40 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 			(flash_data->cmn_attr.request_id == req_id)) {
 			/* Turn On Flash */
 			if (fctrl->flash_state == CAM_FLASH_STATE_START) {
+#ifndef CAM_FACTORY_CONFIG
+				//ASUS_BSP Zhengwei "use torch for flash if battery low"
+				if(asus_flash_is_battery_low()) {
+					//ASUS_BSP +++ ZS630KL Control two leds together
+					UINT i = 0;
+					int curr = 0;
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] != 0)
+							curr = flash_data->led_current_ma[i];
+					}
+					for (i = 0; i < fctrl->torch_num_sources; i++) {
+						if (flash_data->led_current_ma[i] == 0)
+							flash_data->led_current_ma[i] = curr;
+					}
+					//ASUS_BSP --- ZS630KL Control two leds together
+					rc = cam_flash_low(fctrl, flash_data);
+				} else {
+#endif
+				//ASUS_BSP +++ ZS630KL Control two leds together
+				UINT i = 0;
+				int curr = 0;
+				for (i = 0; i < fctrl->flash_num_sources; i++) {
+					if (flash_data->led_current_ma[i] != 0)
+						curr = flash_data->led_current_ma[i];
+				}
+				for (i = 0; i < fctrl->flash_num_sources; i++) {
+					if (flash_data->led_current_ma[i] == 0)
+						flash_data->led_current_ma[i] = curr;
+				}
+				//ASUS_BSP --- ZS630KL Control two leds together
 				rc = cam_flash_high(fctrl, flash_data);
+#ifndef CAM_FACTORY_CONFIG
+				}
+#endif
 				if (rc) {
 					CAM_ERR(CAM_FLASH,
 						"Flash ON failed: rc= %d",
@@ -865,6 +996,20 @@ int cam_flash_pmic_apply_setting(struct cam_flash_ctrl *fctrl,
 			(flash_data->cmn_attr.request_id == req_id)) {
 			/* Turn On Torch */
 			if (fctrl->flash_state == CAM_FLASH_STATE_START) {
+				//ASUS_BSP +++ ZS630KL Control two leds together
+					{
+						UINT i = 0;
+						int curr = 0;
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] != 0)
+								curr = flash_data->led_current_ma[i];
+						}
+						for (i = 0; i < fctrl->torch_num_sources; i++) {
+							if (flash_data->led_current_ma[i] == 0)
+								flash_data->led_current_ma[i] = curr;
+						}
+					}
+					//ASUS_BSP --- ZS630KL Control two leds together
 				rc = cam_flash_low(fctrl, flash_data);
 				if (rc) {
 					CAM_ERR(CAM_FLASH,
@@ -1794,6 +1939,8 @@ int cam_flash_release_dev(struct cam_flash_ctrl *fctrl)
 		fctrl->last_flush_req = 0;
 	}
 
+	asus_flash_state = 0; //ASUS_BSP +++ Shianliang add low battery checking
+
 	return rc;
 }
 
@@ -1842,4 +1989,27 @@ int cam_flash_apply_request(struct cam_req_mgr_apply_request *apply)
 	mutex_unlock(&fctrl->flash_mutex);
 
 	return rc;
+}
+
+int cam_flash_battery_low(int enable)
+{
+	asus_bat_low = enable;
+
+	if(asus_fctrl == NULL)
+		return -EINVAL;
+
+	mutex_lock(&asus_fctrl->flash_mutex);
+	if(asus_flash_state && enable)
+		cam_flash_off(asus_fctrl);
+	mutex_unlock(&asus_fctrl->flash_mutex);
+
+	CAM_DBG(CAM_FLASH, "enable:%d flash_state:%d",
+		asus_bat_low,asus_flash_state);
+	return 0;
+}
+
+void cam_flash_copy_fctrl(struct cam_flash_ctrl * fctrl)
+{
+	if(fctrl)
+		asus_fctrl = fctrl;
 }

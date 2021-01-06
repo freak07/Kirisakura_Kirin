@@ -33,6 +33,8 @@
 #include "ipa_qmi_service.h"
 #include <linux/rmnet_ipa_fd_ioctl.h>
 #include <linux/ipa.h>
+#include <linux/ip.h> /*AS-K Log Wake Up IP Address Info+*/
+#include <linux/ipv6.h> /*AS-K Log Wake Up IP Address Info+*/
 #include <uapi/linux/net_map.h>
 #include <uapi/linux/msm_rmnet.h>
 #include <net/rmnet_config.h>
@@ -87,6 +89,7 @@ MODULE_PARM_DESC(outstanding_low, "Outstanding low");
 
 static void rmnet_ipa_free_msg(void *buff, u32 len, u32 type);
 static void rmnet_ipa_get_stats_and_update(void);
+extern int ipa_resume_irq_flag_function(void);/*AS-K Log Wake Up IP Address Info+*/
 
 static int ipa3_wwan_add_ul_flt_rule_to_ipa(void);
 static int ipa3_wwan_del_ul_flt_rule_to_ipa(void);
@@ -1455,6 +1458,27 @@ static void apps_ipa_packet_receive_notify(void *priv,
 		int result;
 		unsigned int packet_len = skb->len;
 
+		/*AS-K Log Wake Up IP Address Info+*/
+		if (ipa_resume_irq_flag_function() == 1 ) {
+			struct iphdr *ip4h;
+			struct ipv6hdr *ip6h;
+			unsigned char *map_payload;
+			unsigned char ip_version;
+			map_payload = (unsigned char *)(skb->data + sizeof(struct rmnet_map_header_s));
+			ip_version = (*map_payload & 0xF0) >> 4;
+
+			if (ip_version == 0x04) {
+				ip4h = (struct iphdr *) map_payload;
+				pr_err_ratelimited("[WakeUpInfo-IPA] IP4 src: %pI4", &ip4h->saddr);
+				ASUSEvtlog("[WakeUpInfo-IPA] IP4 src: %pI4", &ip4h->saddr);
+			} else if (ip_version == 0x06) {
+				ip6h = (struct ipv6hdr *) map_payload;
+				pr_err_ratelimited("[WakeUpInfo-IPA] IP6 src: %pI6", &ip6h->saddr);
+				ASUSEvtlog("[WakeUpInfo-IPA] IP6 src: %pI6", &ip6h->saddr);
+			}
+		}
+		/*AS-K Log Wake Up IP Address Info-*/
+
 		IPAWANDBG_LOW("Rx packet was received");
 		skb->dev = IPA_NETDEV();
 		if (!rmnet_ipa3_ctx->no_qmap_config)
@@ -1495,6 +1519,10 @@ static int ipa_send_mhi_endp_ind_to_modem(void)
 		ipa3_get_ep_mapping(IPA_CLIENT_MHI_LOW_LAT_PROD);
 	int ipa_mhi_cons_ep_idx =
 		ipa3_get_ep_mapping(IPA_CLIENT_MHI_LOW_LAT_CONS);
+
+	if (ipa_mhi_prod_ep_idx == IPA_EP_NOT_ALLOCATED ||
+		ipa_mhi_cons_ep_idx == IPA_EP_NOT_ALLOCATED)
+		return -EINVAL;
 
 	memset(&req, 0, sizeof(struct ipa_endp_desc_indication_msg_v01));
 	req.ep_info_len = 2;
@@ -4165,7 +4193,12 @@ void ipa3_q6_handshake_complete(bool ssr_bootup)
 	if (ipa3_ctx->ipa_mhi_proxy)
 		imp_handle_modem_ready();
 
-	if (ipa3_ctx->ipa_config_is_mhi)
+	/*
+	 * currently the endp_desc indication only send
+	 * on non-auto mode for low latency pipes
+	 */
+	if (ipa3_ctx->ipa_config_is_mhi &&
+		!ipa3_ctx->ipa_config_is_auto)
 		ipa_send_mhi_endp_ind_to_modem();
 }
 
