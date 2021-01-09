@@ -166,6 +166,7 @@ static int setup_per_mode_enc_key(struct fscrypt_info *ci,
 				  struct fscrypt_prepared_key *keys,
 				  u8 hkdf_context, bool include_fs_uuid)
 {
+	static DEFINE_MUTEX(mode_key_setup_mutex);
 	const struct inode *inode = ci->ci_inode;
 	const struct super_block *sb = inode->i_sb;
 	struct fscrypt_mode *mode = ci->ci_mode;
@@ -234,7 +235,6 @@ static int setup_per_mode_enc_key(struct fscrypt_info *ci,
 	}
 done_unlock:
 	ci->ci_key = *prep_key;
-
 	err = 0;
 out_unlock:
 	mutex_unlock(&mode_key_setup_mutex);
@@ -477,18 +477,21 @@ int fscrypt_get_encryption_info(struct inode *inode)
 
 	res = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
 	if (res < 0) {
-		const union fscrypt_context *dummy_ctx =
-			fscrypt_get_dummy_context(inode->i_sb);
-
-		if (IS_ENCRYPTED(inode) || !dummy_ctx) {
+		if (!fscrypt_dummy_context_enabled(inode) ||
+		    IS_ENCRYPTED(inode)) {
 			fscrypt_warn(inode,
 				     "Error %d getting encryption context",
 				     res);
 			return res;
 		}
 		/* Fake up a context for an unencrypted directory */
-		res = fscrypt_context_size(dummy_ctx);
-		memcpy(&ctx, dummy_ctx, res);
+		memset(&ctx, 0, sizeof(ctx));
+		ctx.version = FSCRYPT_CONTEXT_V1;
+		ctx.v1.contents_encryption_mode = FSCRYPT_MODE_AES_256_XTS;
+		ctx.v1.filenames_encryption_mode = FSCRYPT_MODE_AES_256_CTS;
+		memset(ctx.v1.master_key_descriptor, 0x42,
+		       FSCRYPT_KEY_DESCRIPTOR_SIZE);
+		res = sizeof(ctx.v1);
 	}
 
 	crypt_info = kmem_cache_zalloc(fscrypt_info_cachep, GFP_NOFS);
