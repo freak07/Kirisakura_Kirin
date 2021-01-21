@@ -39,8 +39,6 @@
 #define NO_IRQ	(-1)
 #endif
 
-int g_resume_count = 0;
-
 #ifdef CONFIG_OF
 struct wcd9xxx_irq_drv_data {
 	struct irq_domain *domain;
@@ -207,17 +205,10 @@ bool wcd9xxx_lock_sleep(
 			__func__,
 			WCD9XXX_SYSTEM_RESUME_TIMEOUT_MS, wcd9xxx_res->pm_state,
 			wcd9xxx_res->wlock_holders);
-		// ASUS BSP Debug +++
-		g_resume_count = g_resume_count + 1;
-		if ( g_resume_count == 600 ) {
-			panic("%s: g_resume_count=%d\n", __func__, g_resume_count );
-		}
-		// ASUS BSP Debug ---
 		wcd9xxx_unlock_sleep(wcd9xxx_res);
 		return false;
 	}
 	wake_up_all(&wcd9xxx_res->pm_wq);
-	g_resume_count = 0;
 	return true;
 }
 EXPORT_SYMBOL(wcd9xxx_lock_sleep);
