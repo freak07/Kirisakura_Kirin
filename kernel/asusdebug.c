@@ -852,7 +852,7 @@ void save_last_shutdown_log(char *filename)
 	// ASUS_BSP +++ Jiunhau_Wang [ZE620KL][Dropbox][NA][NA] /asdf/last_kmsg_16K
 	printk_buffer_index = *(printk_buffer_slot2_addr + 1);
 	if ((printk_buffer_index < PRINTK_BUFFER_SLOT_SIZE) && (LAST_KMSG_SIZE < SZ_128K)) {
-		fd_kmsg_16K = sys_open("/asdf/last_kmsg_16K", O_CREAT | O_RDWR | O_SYNC, S_IRUGO);
+		fd_kmsg_16K = sys_open("/asdf/last_kmsg_16K", O_CREAT | O_RDWR | O_SYNC, 0666);
 		if (!IS_ERR((const void *)(ulong)fd_kmsg_16K)) {
 			char *buf = kzalloc(LAST_KMSG_SIZE, GFP_ATOMIC);
 
@@ -866,7 +866,7 @@ void save_last_shutdown_log(char *filename)
 					ulong part2 = printk_buffer_index;
 					memcpy(buf, last_shutdown_log + PRINTK_BUFFER_SLOT_SIZE - part1, part1);
 					memcpy(buf + part1, last_shutdown_log, part2);
-				}		
+				}
 				sys_write(fd_kmsg_16K, buf, LAST_KMSG_SIZE);
 				kfree(buf);
 			}

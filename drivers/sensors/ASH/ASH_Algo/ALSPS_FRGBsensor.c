@@ -3022,17 +3022,13 @@ void mALSPS_FRGB_algo_resume(void)
 	g_alsps_frgb_power_status = ALSPS_RESUME;
 
 	if (g_als_data->Device_switch_on == 0 && g_als_data->HAL_switch_on == 1){
-		mutex_lock(&g_alsps_frgb_lock);
 		resume_flag=1;
 		light_turn_onoff(1);
-		mutex_unlock(&g_alsps_frgb_lock);
 	}
 
 	if (g_frgb_data->Device_switch_on == 0 && g_frgb_data->HAL_switch_on >= 1){
-		mutex_lock(&g_alsps_frgb_lock);
 		resume_flag=1;
 		FRGB_turn_onoff(1);
-		mutex_unlock(&g_alsps_frgb_lock);
 		/* If the frgb sensor has been opened and frgb polling thread has been canceled, 
 		 * restart it. */
 		if(g_frgb_polling_cancel_flag){

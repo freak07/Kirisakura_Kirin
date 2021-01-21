@@ -21,8 +21,7 @@
 #define UINT uint32_t
 
 static int asus_bat_low = 0;
-static int asus_flash_state = 0;
-static struct cam_flash_ctrl *asus_fctrl;
+static struct cam_flash_ctrl *asus_fctrl = NULL;
 int cam_flash_prepare(struct cam_flash_ctrl *flash_ctrl,
 	bool regulator_enable)
 {
@@ -458,6 +457,7 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 				i, curr);
 			cam_res_mgr_led_trigger_event(
 				flash_ctrl->torch_trigger[i], curr);
+				flash_ctrl->ax_flash_type = CAMERA_SENSOR_FLASH_OP_FIRELOW;
 		}
 	} else if (op == CAMERA_SENSOR_FLASH_OP_FIREHIGH) {
 		for (i = 0; i < flash_ctrl->flash_num_sources; i++) {
@@ -473,6 +473,7 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 				i, curr);
 			cam_res_mgr_led_trigger_event(
 				flash_ctrl->flash_trigger[i], curr);
+			flash_ctrl->ax_flash_type = CAMERA_SENSOR_FLASH_OP_FIREHIGH;
 		}
 	} else {
 		CAM_ERR(CAM_FLASH, "Wrong Operation: %d", op);
@@ -484,7 +485,9 @@ static int cam_flash_ops(struct cam_flash_ctrl *flash_ctrl,
 			flash_ctrl->switch_trigger,
 			(enum led_brightness)LED_SWITCH_ON);
 
-	asus_flash_state = 1; //ASUS_BSP +++ Shianliang add low battery checking
+	CAM_DBG(CAM_FLASH, "fctrl: %p, ax_flash_type: %d",
+		flash_ctrl,
+		flash_ctrl->ax_flash_type);
 
 	return 0;
 }
@@ -504,7 +507,11 @@ int cam_flash_off(struct cam_flash_ctrl *flash_ctrl)
 
 	flash_ctrl->flash_state = CAM_FLASH_STATE_START;
 
-	asus_flash_state = 0; //ASUS_BSP +++ Shianliang add low battery checking
+	CAM_DBG(CAM_FLASH, "fctrl: %p, ax_flash_type: %d",
+		flash_ctrl,
+		flash_ctrl->ax_flash_type);
+
+	flash_ctrl->ax_flash_type = CAMERA_SENSOR_FLASH_OP_OFF;
 
 	return 0;
 }
@@ -1651,7 +1658,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 				rc = -EINVAL;
 				goto rel_cmd_buf;
 			}
-
+			cam_cancel_delay_flash(fctrl);
 			flash_data->opcode = flash_operation_info->opcode;
 			flash_data->cmn_attr.count =
 				flash_operation_info->count;
@@ -1701,6 +1708,7 @@ int cam_flash_pmic_pkt_parser(struct cam_flash_ctrl *fctrl, void *arg)
 		switch (cmn_hdr->cmd_type) {
 		case CAMERA_SENSOR_FLASH_CMD_TYPE_WIDGET: {
 			CAM_DBG(CAM_FLASH, "Widget Flash Operation");
+			cam_cancel_delay_flash(fctrl);
 			if (remain_len < sizeof(struct cam_flash_set_on_off)) {
 				CAM_ERR(CAM_FLASH, "Not enough buffer");
 				rc = -EINVAL;
@@ -1939,8 +1947,6 @@ int cam_flash_release_dev(struct cam_flash_ctrl *fctrl)
 		fctrl->last_flush_req = 0;
 	}
 
-	asus_flash_state = 0; //ASUS_BSP +++ Shianliang add low battery checking
-
 	return rc;
 }
 
@@ -1999,17 +2005,17 @@ int cam_flash_battery_low(int enable)
 		return -EINVAL;
 
 	mutex_lock(&asus_fctrl->flash_mutex);
-	if(asus_flash_state && enable)
+	if((CAMERA_SENSOR_FLASH_OP_OFF != asus_fctrl->ax_flash_type) && enable)
 		cam_flash_off(asus_fctrl);
 	mutex_unlock(&asus_fctrl->flash_mutex);
 
-	CAM_DBG(CAM_FLASH, "enable:%d flash_state:%d",
-		asus_bat_low,asus_flash_state);
+	CAM_DBG(CAM_FLASH, "enable:%d ax_flash_type:%d fctrl: %p",
+		asus_bat_low, asus_fctrl->ax_flash_type, asus_fctrl);
 	return 0;
 }
 
 void cam_flash_copy_fctrl(struct cam_flash_ctrl * fctrl)
 {
-	if(fctrl)
+	if(NULL != fctrl && asus_fctrl != fctrl)
 		asus_fctrl = fctrl;
 }
